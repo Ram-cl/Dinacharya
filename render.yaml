@@ -1,0 +1,64 @@
+services:
+  # Spring Boot Backend
+  - type: web
+    name: dinacharya-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/v1/actuator/health
+    envVars:
+      # Database - Use Render's managed MySQL or external
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_NAME
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      # Redis - Use Render's managed Redis or external
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6379"
+      # JWT Configuration
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION
+        value: "86400000"
+      - key: JWT_REFRESH_EXPIRATION
+        value: "604800000"
+      # Application
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: SERVER_PORT
+        value: "8080"
+      # Admin seeding
+      - key: ADMIN_ENABLED
+        value: "true"
+      - key: ADMIN_EMAIL
+        value: admin@taskhub.com
+      - key: ADMIN_PASSWORD
+        sync: false
+
+  # React Frontend (Static Site)
+  - type: web
+    name: dinacharya-frontend
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/dist
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false  # Set this to your backend URL: https://dinacharya-backend.onrender.com/api/v1
