@@ -6,9 +6,12 @@ import com.kanban.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -20,7 +23,8 @@ import java.time.LocalDateTime;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class AdminUserInitializer implements CommandLineRunner {
+@Order(100) // Run after other initializers
+public class AdminUserInitializer implements ApplicationRunner {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -35,7 +39,8 @@ public class AdminUserInitializer implements CommandLineRunner {
     private String adminPassword;
 
     @Override
-    public void run(String... args) {
+    @Transactional
+    public void run(ApplicationArguments args) {
         if (!adminEnabled) {
             log.info("Default admin bootstrap disabled (set ADMIN_ENABLED=true to enable)");
             return;
@@ -46,22 +51,26 @@ public class AdminUserInitializer implements CommandLineRunner {
             return;
         }
 
-        if (userRepository.findByEmailIgnoreCase(adminEmail).isEmpty()) {
-            log.info("Creating default admin user for {}", adminEmail);
+        try {
+            if (userRepository.findByEmailIgnoreCase(adminEmail).isEmpty()) {
+                log.info("Creating default admin user for {}", adminEmail);
 
-            User admin = User.builder()
-                .email(adminEmail)
-                .password(passwordEncoder.encode(adminPassword))
-                .name("Administrator")
-                .role(UserRole.ADMIN)
-                .isActive(true)
-                .lastActive(LocalDateTime.now())
-                .build();
+                User admin = User.builder()
+                    .email(adminEmail)
+                    .password(passwordEncoder.encode(adminPassword))
+                    .name("Administrator")
+                    .role(UserRole.ADMIN)
+                    .isActive(true)
+                    .lastActive(LocalDateTime.now())
+                    .build();
 
-            userRepository.save(admin);
-            log.info("Default admin user created for {}", adminEmail);
-        } else {
-            log.info("Admin user already exists: {}", adminEmail);
+                userRepository.save(admin);
+                log.info("Default admin user created for {}", adminEmail);
+            } else {
+                log.info("Admin user already exists: {}", adminEmail);
+            }
+        } catch (Exception e) {
+            log.error("Failed to create admin user: {}. Database tables may not be ready.", e.getMessage());
         }
     }
 }

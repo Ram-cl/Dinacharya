@@ -28,6 +28,14 @@ public class RoleDataMigration implements CommandLineRunner {
         log.info("========== STARTING RBAC ROLE DATA MIGRATION ==========");
         
         try {
+            // Check if the users table exists first
+            try {
+                entityManager.createNativeQuery("SELECT 1 FROM users LIMIT 1").getSingleResult();
+            } catch (Exception e) {
+                log.info("Users table does not exist yet - skipping role migration (will run on next startup after tables are created)");
+                return;
+            }
+            
             // Step 1: First, expand the ENUM column to accept all old and new values temporarily
             // This allows us to update without truncation errors
             try {
