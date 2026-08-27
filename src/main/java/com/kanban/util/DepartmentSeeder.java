@@ -29,11 +29,15 @@ public class DepartmentSeeder implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        for (String name : DEFAULT_DEPARTMENTS) {
-            if (!departmentRepository.existsByNameIgnoreCase(name)) {
-                departmentRepository.save(Department.builder().name(name).build());
-                log.info("Seeded department: {}", name);
+        try {
+            for (String name : DEFAULT_DEPARTMENTS) {
+                if (!departmentRepository.existsByNameIgnoreCase(name)) {
+                    departmentRepository.save(Department.builder().name(name).build());
+                    log.info("Seeded department: {}", name);
+                }
             }
+        } catch (Exception e) {
+            log.warn("Department seeder skipped - tables may not exist yet: {}", e.getMessage());
         }
     }
 }

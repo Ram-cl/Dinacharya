@@ -49,6 +49,14 @@ public class AseTeamSeeder implements ApplicationRunner {
         log.info("Starting ASE Team Seeder...");
         
         try {
+            // Check if tables exist by attempting a simple count
+            try {
+                userRepository.count();
+            } catch (Exception e) {
+                log.info("ASE Team Seeder skipped - tables may not exist yet");
+                return;
+            }
+            
             // Step 1: Clean up test data first
             cleanupTestData();
             
@@ -94,7 +102,7 @@ public class AseTeamSeeder implements ApplicationRunner {
                 log.info("Seeded ASE member '{}' ({})", name, email);
             }
         } catch (Exception e) {
-            log.error("Error in ASE Team Seeder", e);
+            log.warn("ASE Team Seeder error (tables may not exist yet): {}", e.getMessage());
         }
     }
 
