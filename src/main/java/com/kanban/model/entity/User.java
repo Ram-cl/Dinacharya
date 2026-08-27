@@ -43,7 +43,7 @@ public class User {
     @Column(columnDefinition = "TEXT")
     private String bio;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "user_skills", joinColumns = @JoinColumn(name = "user_id"))
     @Column(name = "skill")
     private Set<String> skills = new HashSet<>();

@@ -21,11 +21,17 @@ public class DepartmentNameMigrationRunner implements ApplicationRunner {
     private final UserRepository userRepository;
 
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
         log.info("Running department name migration...");
         
         try {
+            // Check if we can query users first
+            long count = userRepository.count();
+            log.info("Found {} users to check for migration", count);
+            if (count == 0) {
+                log.info("No users to migrate");
+                return;
+            }
             List<User> allUsers = userRepository.findAll();
             int cybersecurityCount = 0;
             int devopsCount = 0;
