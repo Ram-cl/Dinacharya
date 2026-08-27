@@ -10,6 +10,7 @@ import com.kanban.model.dto.response.TaskResponse;
 import com.kanban.model.entity.Task;
 import com.kanban.model.entity.Team;
 import com.kanban.model.entity.User;
+import com.kanban.model.enums.AuditAction;
 import com.kanban.model.enums.TaskPriority;
 import com.kanban.model.enums.TaskStatus;
 import com.kanban.model.enums.UserRole;
@@ -24,7 +25,10 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -127,6 +131,92 @@ public class TaskService {
         notifyAssigneeAfterCommit(task);
 
         return taskMapper.toResponse(task);
+    }
+
+    /**
+     * Bulk task creation optimized for file imports. Unlike calling
+     * {@link #createTask} in a loop, this:
+     *   - resolves the creator once (not per row),
+     *   - caches each team and assignee entity (repeat employees hit the DB once),
+     *   - adds new team members in-memory and lets managed-entity dirty checking
+     *     flush team_members a single time at commit,
+     *   - saves all tasks with {@code saveAll} so Hibernate JDBC batching applies,
+     *   - writes a single summary audit entry instead of one per row,
+     *   - skips per-row assignee emails (an import shouldn't spam notifications).
+     * Every request must carry a teamId. The whole batch commits atomically.
+     */
+    @Transactional
+    public List<TaskResponse> createTasksBulk(List<CreateTaskRequest> requests, UUID createdById) {
+        List<TaskResponse> responses = new ArrayList<>();
+        if (requests == null || requests.isEmpty()) {
+            return responses;
+        }
+
+        User createdBy = userService.getUserEntityById(createdById);
+        boolean isAdmin = createdBy.getRole() == UserRole.ADMIN;
+
+        Map<UUID, Team> teamCache = new HashMap<>();
+        Map<UUID, User> userCache = new HashMap<>();
+        userCache.put(createdBy.getId(), createdBy);
+        // Per-team snapshot of member ids, so each new member is added only once.
+        Map<UUID, Set<UUID>> teamMemberIds = new HashMap<>();
+
+        List<Task> toSave = new ArrayList<>();
+
+        for (CreateTaskRequest request : requests) {
+            if (request.getTeamId() == null) {
+                throw new IllegalArgumentException("Bulk task creation requires a teamId on every row");
+            }
+
+            Team team = teamCache.computeIfAbsent(request.getTeamId(), teamService::getTeamEntityById);
+            Set<UUID> memberIds = teamMemberIds.computeIfAbsent(team.getId(), k -> {
+                Set<UUID> ids = new HashSet<>();
+                if (team.getLead() != null) {
+                    ids.add(team.getLead().getId());
+                }
+                if (team.getMembers() != null) {
+                    team.getMembers().forEach(m -> ids.add(m.getId()));
+                }
+                return ids;
+            });
+
+            Task task = taskMapper.fromCreateRequest(request);
+            task.setCreatedBy(createdBy);
+            task.setTeam(team);
+            task.setStatus(request.getStatus() != null ? request.getStatus() : TaskStatus.TODO);
+
+            User assignee = null;
+            if (request.getAssignedToId() != null) {
+                assignee = userCache.computeIfAbsent(request.getAssignedToId(), userService::getUserEntityById);
+                if (!memberIds.contains(assignee.getId()) && !isAdmin && !assignee.getId().equals(createdById)) {
+                    throw new UnauthorizedException("You can only assign daily tasks to yourself");
+                }
+            } else if (!isAdmin) {
+                assignee = createdBy;
+            }
+
+            if (assignee != null) {
+                task.setAssignedTo(assignee);
+                if (!memberIds.contains(assignee.getId())) {
+                    // Team owns the team_members join table; adding here flushes at commit.
+                    team.getMembers().add(assignee);
+                    memberIds.add(assignee.getId());
+                }
+            }
+
+            toSave.add(task);
+        }
+
+        List<Task> saved = taskRepository.saveAll(toSave);
+
+        // Single audit entry for the whole import instead of one insert per row.
+        auditService.logAction(createdById, AuditAction.CREATE, "Task", createdById,
+            Map.of("event", "bulk_import", "count", saved.size()));
+
+        for (Task task : saved) {
+            responses.add(taskMapper.toResponse(task));
+        }
+        return responses;
     }
 
     @Transactional

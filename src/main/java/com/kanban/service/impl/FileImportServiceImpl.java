@@ -257,81 +257,86 @@ public class FileImportServiceImpl implements FileImportService {
 
     private TaskImportResponse processImportedTasks(List<TaskImportData> parsedTasks, UUID teamId, UUID userId,
                                                     boolean autoCreateEmployees) {
-        List<TaskResponse> importedTasks = new ArrayList<>();
         List<String> errors = new ArrayList<>();
-        int successCount = 0;
         int failureCount = 0;
 
+        // Resolve each assignee once and reuse. Attendance sheets repeat the same
+        // employee across many rows, so this removes most per-row DB lookups.
+        // Values may be null (cached "not found") to avoid re-querying misses.
+        java.util.Map<String, User> usersByEmail = new java.util.HashMap<>();
+        java.util.Map<String, User> usersByName = new java.util.HashMap<>();
+
+        List<CreateTaskRequest> requests = new ArrayList<>();
+
         for (TaskImportData taskData : parsedTasks) {
-            try {
-                // Find assignee: prefer email, then fall back to employee name (attendance sheets)
-                UUID assigneeId = null;
-                if (taskData.getAssigneeEmail() != null && !taskData.getAssigneeEmail().isEmpty()) {
-                    User assignee = userRepository.findByEmailIgnoreCase(taskData.getAssigneeEmail())
-                            .orElse(null);
-                    if (assignee != null) {
-                        assigneeId = assignee.getId();
-                    } else {
-                        log.warn("Row {}: Assignee with email {} not found",
-                                taskData.getRowNumber(), taskData.getAssigneeEmail());
-                    }
+            // Attendance-only rows (no real task title) are not imported as tasks.
+            boolean isAttendanceOnly = taskData.getTitle() != null && taskData.getTitle().startsWith("Attendance:");
+            if (isAttendanceOnly) {
+                log.debug("Skipping attendance-only row: {}", taskData.getRowNumber());
+                continue;
+            }
+
+            // Validate required fields for task creation
+            if (taskData.getTitle() == null || taskData.getTitle().trim().isEmpty()) {
+                errors.add(String.format("Row %d: Title is required", taskData.getRowNumber()));
+                failureCount++;
+                continue;
+            }
+
+            // Find assignee: prefer email, then fall back to employee name (attendance sheets)
+            UUID assigneeId = null;
+            String email = taskData.getAssigneeEmail();
+            if (email != null && !email.isEmpty()) {
+                String key = email.toLowerCase();
+                User assignee;
+                if (usersByEmail.containsKey(key)) {
+                    assignee = usersByEmail.get(key);
+                } else {
+                    assignee = userRepository.findByEmailIgnoreCase(key).orElse(null);
+                    usersByEmail.put(key, assignee); // cache result (including null misses)
                 }
-                if (assigneeId == null && taskData.getEmployeeName() != null
-                        && !taskData.getEmployeeName().isBlank()) {
-                    User assignee = resolveUserByName(taskData.getEmployeeName());
+                if (assignee != null) {
+                    assigneeId = assignee.getId();
+                } else {
+                    log.warn("Row {}: Assignee with email {} not found", taskData.getRowNumber(), email);
+                }
+            }
+            if (assigneeId == null && taskData.getEmployeeName() != null
+                    && !taskData.getEmployeeName().isBlank()) {
+                String nameKey = taskData.getEmployeeName().trim().toLowerCase();
+                User assignee;
+                if (usersByName.containsKey(nameKey)) {
+                    assignee = usersByName.get(nameKey);
+                } else {
+                    assignee = resolveUserByName(taskData.getEmployeeName());
                     if (assignee == null && autoCreateEmployees) {
                         assignee = createEmployee(taskData.getEmployeeName(), taskData.getDepartment());
                     }
-                    if (assignee != null) {
-                        assigneeId = assignee.getId();
-                    } else {
-                        log.warn("Row {}: Employee '{}' not matched to any user",
-                                taskData.getRowNumber(), taskData.getEmployeeName());
-                    }
+                    usersByName.put(nameKey, assignee); // cache result (including null misses)
                 }
-
-                // ATTENDANCE-ONLY IMPORT: If this is from an attendance sheet WITHOUT a task title,
-                // skip task creation and go straight to time entry creation
-                boolean isAttendanceOnly = taskData.getTitle() != null && taskData.getTitle().startsWith("Attendance:");
-                
-                if (!isAttendanceOnly) {
-                    // Validate required fields for task creation
-                    if (taskData.getTitle() == null || taskData.getTitle().trim().isEmpty()) {
-                        errors.add(String.format("Row %d: Title is required", taskData.getRowNumber()));
-                        failureCount++;
-                        continue;
-                    }
-
-                    // Create task request
-                    CreateTaskRequest request = CreateTaskRequest.builder()
-                            .title(taskData.getTitle())
-                            .description(taskData.getDescription())
-                            .remark(taskData.getRemark())
-                            .status(taskData.getStatus() != null ? taskData.getStatus() : TaskStatus.TODO)
-                            .priority(taskData.getPriority() != null ? taskData.getPriority() : TaskPriority.MEDIUM)
-                            .deadline(taskData.getDueDate() != null ? taskData.getDueDate().atStartOfDay() : null)
-                            .assignedToId(assigneeId)
-                            .teamId(teamId)
-                            .build();
-
-                    // Create the task
-                    TaskResponse createdTask = taskService.createTask(request, userId);
-                    importedTasks.add(createdTask);
-                    successCount++;
-                    log.info("Created task: {} for employee {}", taskData.getTitle(), taskData.getEmployeeName());
+                if (assignee != null) {
+                    assigneeId = assignee.getId();
                 } else {
-                    // Skip attendance-only rows - just create tasks, not attendance records
-                    log.info("Skipping attendance-only row: {}", taskData.getRowNumber());
-                    continue;
+                    log.warn("Row {}: Employee '{}' not matched to any user",
+                            taskData.getRowNumber(), taskData.getEmployeeName());
                 }
-
-            } catch (Exception e) {
-                String errorMsg = String.format("Row %d: %s", taskData.getRowNumber(), e.getMessage());
-                errors.add(errorMsg);
-                failureCount++;
-                log.error("Error importing task from row {}: {}", taskData.getRowNumber(), e.getMessage());
             }
+
+            requests.add(CreateTaskRequest.builder()
+                    .title(taskData.getTitle())
+                    .description(taskData.getDescription())
+                    .remark(taskData.getRemark())
+                    .status(taskData.getStatus() != null ? taskData.getStatus() : TaskStatus.TODO)
+                    .priority(taskData.getPriority() != null ? taskData.getPriority() : TaskPriority.MEDIUM)
+                    .deadline(taskData.getDueDate() != null ? taskData.getDueDate().atStartOfDay() : null)
+                    .assignedToId(assigneeId)
+                    .teamId(teamId)
+                    .build());
         }
+
+        // Single batched save instead of one round trip per row.
+        List<TaskResponse> importedTasks = taskService.createTasksBulk(requests, userId);
+        int successCount = importedTasks.size();
 
         String message = String.format("Import completed: %d succeeded, %d failed out of %d total rows",
                 successCount, failureCount, parsedTasks.size());
