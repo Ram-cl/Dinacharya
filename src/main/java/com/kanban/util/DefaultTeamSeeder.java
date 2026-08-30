@@ -27,18 +27,22 @@ public class DefaultTeamSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        User lead = userRepository.findAllDistinct().stream()
-                .filter(u -> u.getRole() == UserRole.ADMIN)
-                .findFirst()
-                .orElse(null);
-        if (lead == null) {
-            log.warn("No admin user yet — skipped department teams");
-            return;
-        }
+        try {
+            User lead = userRepository.findAllDistinct().stream()
+                    .filter(u -> u.getRole() == UserRole.ADMIN)
+                    .findFirst()
+                    .orElse(null);
+            if (lead == null) {
+                log.warn("No admin user yet — skipped department teams");
+                return;
+            }
 
-        for (Department department : departmentRepository.findAll()) {
-            teamService.getOrCreateDepartmentTeam(department.getName(), lead);
+            for (Department department : departmentRepository.findAll()) {
+                teamService.getOrCreateDepartmentTeam(department.getName(), lead);
+            }
+            log.info("Ensured a team for each department");
+        } catch (Exception e) {
+            log.error("Department team seeding failed; app will keep running: {}", e.getMessage(), e);
         }
-        log.info("Ensured a team for each department");
     }
 }

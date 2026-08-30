@@ -13,5 +13,8 @@
   },
   "vars": {
     "API_ORIGIN": "https://dinacharya-ese5.onrender.com"
+  },
+  "triggers": {
+    "crons": ["*/10 * * * *"]
   }
 }

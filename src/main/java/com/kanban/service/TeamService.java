@@ -221,16 +221,21 @@ public class TeamService {
             name = "Engineering";
         }
         final String teamName = name;
+        User managedLead = lead;
+        if (lead != null && lead.getId() != null) {
+            managedLead = userRepository.findById(lead.getId()).orElse(lead);
+        }
+        final User teamLead = managedLead;
         return teamRepository.findByNameIgnoreCase(teamName).orElseGet(() -> {
             Team team = Team.builder()
                     .name(teamName)
                     .description("Department: " + teamName)
-                    .lead(lead)
+                    .lead(teamLead)
                     .members(new HashSet<>())
                     .tasks(new HashSet<>())
                     .build();
-            if (lead != null) {
-                team.getMembers().add(lead);
+            if (teamLead != null) {
+                team.getMembers().add(teamLead);
             }
             return teamRepository.save(team);
         });

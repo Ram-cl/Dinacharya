@@ -1,6 +1,8 @@
 /**
  * Same-origin proxy so POST /api/v1/* hits Render instead of static assets (405).
  * Cloudflare Worker env: API_ORIGIN = https://YOUR-SERVICE.onrender.com
+ *
+ * Also runs a keep-alive cron every 10 minutes to prevent Render from spinning down.
  */
 export default {
   async fetch(request, env) {
@@ -33,11 +35,12 @@ export default {
       // retry waits consume Cloudflare's 120s origin read timeout.
       const idempotent = request.method === 'GET' || request.method === 'HEAD';
       if (idempotent) {
-        for (let attempt = 0; attempt < 4; attempt++) {
+        // Retry up to 3 times with 2s backoff (reduced from 4s × 4 to cut lag)
+        for (let attempt = 0; attempt < 3; attempt++) {
           if (response.status !== 503 && response.status !== 429) {
             break;
           }
-          await new Promise((resolve) => setTimeout(resolve, 4000));
+          await new Promise((resolve) => setTimeout(resolve, 2000));
           response = await fetch(target, init);
         }
       }
@@ -45,5 +48,19 @@ export default {
     }
 
     return env.ASSETS.fetch(request);
+  },
+
+  // Cron trigger — runs every 10 minutes to keep Render awake
+  async scheduled(_event, env, _ctx) {
+    const origin = String(env.API_ORIGIN || 'https://dinacharya-ese5.onrender.com').replace(/\/$/, '');
+    try {
+      const res = await fetch(`${origin}/api/v1/actuator/health/liveness`, {
+        method: 'GET',
+        headers: { 'User-Agent': 'Cloudflare-KeepAlive/1.0' },
+      });
+      console.log(`[keep-alive] ${res.status} ${new Date().toISOString()}`);
+    } catch (err) {
+      console.error(`[keep-alive] failed: ${err}`);
+    }
   },
 };

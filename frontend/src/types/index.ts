@@ -340,19 +340,6 @@ export interface CreateCommentRequest {
   content: string;
 }
 
-// WebSocket event types
-export interface WebSocketEvent {
-  type: 'TASK_CREATED' | 'TASK_UPDATED' | 'TASK_DELETED' | 'TASK_ASSIGNED' | 
-        'COMMENT_ADDED' | 'COMMENT_DELETED' |
-        'ATTACHMENT_ADDED' | 'ATTACHMENT_DELETED';
-  task?: Task;
-  taskId?: string;
-  comment?: Comment;
-  commentId?: string;
-  attachment?: Attachment;
-  attachmentId?: string;
-}
-
 // Paginated response
 export interface Page<T> {
   content: T[];

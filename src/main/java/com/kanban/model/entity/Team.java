@@ -31,7 +31,7 @@ public class Team {
     @JoinColumn(name = "lead_id", nullable = false)
     private User lead;
 
-    @ManyToMany(fetch = FetchType.LAZY, cascade = CascadeType.PERSIST)
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "team_members",
         joinColumns = @JoinColumn(name = "team_id"),
