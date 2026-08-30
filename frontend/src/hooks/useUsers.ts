@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
-import { Page, User, CreateMemberRequest, UpdateMemberRequest } from '@/types';
+import { Page, User, CreateMemberRequest, UpdateMemberRequest, UpdateUserRequest } from '@/types';
 import { AxiosError } from 'axios';
 import { toast } from 'react-toastify';
+import { useAuthStore } from '@/store/authStore';
 
 function apiError(error: AxiosError<{ detail?: string; message?: string; errors?: Record<string, string> }>, fallback: string) {
   const data = error.response?.data;
@@ -204,6 +205,24 @@ export const useCreateMember = () => {
     onError: (error: AxiosError<{ detail?: string }>) => {
       const message = error.response?.data?.detail || 'Failed to create member';
       toast.error(message);
+    },
+  });
+};
+
+export const useUpdateProfile = () => {
+  const setUser = useAuthStore((state) => state.setUser);
+
+  return useMutation({
+    mutationFn: async (data: UpdateUserRequest) => {
+      const response = await apiClient.put<User>('/users/me', data);
+      return response.data;
+    },
+    onSuccess: (updatedUser) => {
+      setUser(updatedUser);
+      toast.success('Profile updated');
+    },
+    onError: (error: AxiosError<{ detail?: string; message?: string; errors?: Record<string, string> }>) => {
+      toast.error(apiError(error, 'Failed to update profile'));
     },
   });
 };
