@@ -1,33 +1,36 @@
 services:
   - type: web
-    name: kanban-backend
+    name: dinacharya-backend
     runtime: docker
     dockerfilePath: ./Dockerfile.backend
-    healthCheckPath: /api/v1/actuator/health
+    dockerContext: .
+    plan: free
     envVars:
-      - key: SPRING_PROFILES_ACTIVE
-        value: prod
       - key: DB_HOST
         sync: false
       - key: DB_PORT
-        value: "3306"
+        value: 3306
       - key: DB_NAME
         sync: false
       - key: DB_USERNAME
         sync: false
       - key: DB_PASSWORD
         sync: false
-      - key: DB_USE_SSL
-        value: "true"
       - key: JWT_SECRET
-        generateValue: true
-      - key: FRONTEND_URL
         sync: false
-      - key: CORS_ALLOWED_ORIGINS
-        sync: false
+      - key: JWT_EXPIRATION
+        value: 86400000
+      - key: JWT_REFRESH_EXPIRATION
+        value: 604800000
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
       - key: ADMIN_ENABLED
-        value: "true"
+        value: true
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
         sync: false
