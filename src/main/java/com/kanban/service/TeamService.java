@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.UUID;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -226,19 +227,22 @@ public class TeamService {
             managedLead = userRepository.findById(lead.getId()).orElse(lead);
         }
         final User teamLead = managedLead;
-        return teamRepository.findByNameIgnoreCase(teamName).orElseGet(() -> {
-            Team team = Team.builder()
-                    .name(teamName)
-                    .description("Department: " + teamName)
-                    .lead(teamLead)
-                    .members(new HashSet<>())
-                    .tasks(new HashSet<>())
-                    .build();
-            if (teamLead != null) {
-                team.getMembers().add(teamLead);
-            }
-            return teamRepository.save(team);
-        });
+        List<Team> existing = teamRepository.findByNameIgnoreCase(teamName);
+        if (!existing.isEmpty()) {
+            // If duplicates exist, return the first one (oldest by natural order)
+            return existing.get(0);
+        }
+        Team team = Team.builder()
+                .name(teamName)
+                .description("Department: " + teamName)
+                .lead(teamLead)
+                .members(new HashSet<>())
+                .tasks(new HashSet<>())
+                .build();
+        if (teamLead != null) {
+            team.getMembers().add(teamLead);
+        }
+        return teamRepository.save(team);
     }
 
     public boolean isMember(Team team, User user) {

@@ -45,7 +45,7 @@ public interface TeamRepository extends JpaRepository<Team, UUID> {
 
     List<Team> findByLead_Id(UUID leadId);
 
-    java.util.Optional<Team> findByNameIgnoreCase(String name);
+    List<Team> findByNameIgnoreCase(String name);
 
     @Modifying(clearAutomatically = true)
     @Query(value = "DELETE FROM team_members WHERE user_id = :userId", nativeQuery = true)
