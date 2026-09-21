@@ -1,8 +1,6 @@
 spring:
   datasource:
-    # TiDB Serverless requires TLS. Do not set DATABASE_URL / SPRING_DATASOURCE_URL
-    # without sslMode=VERIFY_IDENTITY or the pool will be rewritten anyway in prod.
-    url: jdbc:mysql://${DB_HOST}:${DB_PORT:4000}/${DB_NAME:kanbandb}?sslMode=VERIFY_IDENTITY&enabledTLSProtocols=TLSv1.2,TLSv1.3&createDatabaseIfNotExist=true&serverTimezone=UTC&autoReconnect=true
+    url: ${DATABASE_URL:jdbc:mysql://${DB_HOST:mysql}:${DB_PORT:3306}/${DB_NAME:kanbandb}?useSSL=${DB_USE_SSL:false}&sslMode=${DB_SSL_MODE:DISABLED}&allowPublicKeyRetrieval=true&autoReconnect=true&createDatabaseIfNotExist=true&serverTimezone=UTC}
     hikari:
       maximum-pool-size: ${DB_POOL_MAX:5}
       minimum-idle: ${DB_POOL_MIN:1}

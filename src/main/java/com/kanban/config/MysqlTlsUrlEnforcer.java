@@ -58,8 +58,12 @@ public class MysqlTlsUrlEnforcer {
             return cleaned;
         }
 
-        // For standard MySQL (Docker / Local / AWS RDS / Render), if useSSL=false is specified, do not force SSL
+        // For standard MySQL (Docker / Local / AWS RDS / Render):
+        // If useSSL=false or sslMode=DISABLED is specified, ensure Connector/J sslMode is set to DISABLED
         if (url.contains("useSSL=false") || url.contains("sslMode=DISABLED")) {
+            if (!url.toLowerCase().contains("sslmode=")) {
+                url += (url.contains("?") ? "&" : "?") + "sslMode=DISABLED";
+            }
             return url;
         }
 
