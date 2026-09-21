@@ -1,5 +1,6 @@
 // Enums
 export enum UserRole {
+  USER = 'USER',
   MEMBER = 'MEMBER',
   TEAM_LEAD = 'TEAM_LEAD',
   MODERATOR = 'MODERATOR',

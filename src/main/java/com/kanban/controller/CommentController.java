@@ -31,8 +31,12 @@ public class CommentController {
 
     @GetMapping
     @Operation(summary = "Get comments for a task")
-    public ResponseEntity<Set<CommentResponse>> getCommentsByTask(@PathVariable UUID taskId) {
-        Set<CommentResponse> comments = commentService.getCommentsByTask(taskId);
+    public ResponseEntity<Set<CommentResponse>> getCommentsByTask(
+        @PathVariable UUID taskId,
+        Authentication authentication
+    ) {
+        var user = userDetailsService.loadUserEntityByEmail(authentication.getName());
+        Set<CommentResponse> comments = commentService.getCommentsByTask(taskId, user.getId());
         return ResponseEntity.ok(comments);
     }
 
@@ -40,9 +44,11 @@ public class CommentController {
     @Operation(summary = "Get comments for a task (paginated)")
     public ResponseEntity<Page<CommentResponse>> getCommentsByTaskPaginated(
         @PathVariable UUID taskId,
+        Authentication authentication,
         Pageable pageable
     ) {
-        Page<CommentResponse> comments = commentService.getCommentsByTaskPaginated(taskId, pageable);
+        var user = userDetailsService.loadUserEntityByEmail(authentication.getName());
+        Page<CommentResponse> comments = commentService.getCommentsByTaskPaginated(taskId, user.getId(), pageable);
         return ResponseEntity.ok(comments);
     }
 

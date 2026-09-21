@@ -105,4 +105,13 @@ public class JwtUtil {
             return false;
         }
     }
+
+    public boolean isRefreshToken(String token) {
+        try {
+            Claims claims = extractAllClaims(token);
+            return "refresh".equalsIgnoreCase(claims.get("type", String.class));
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }

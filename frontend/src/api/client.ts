@@ -1,20 +1,22 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/store/authStore';
 
-const DEFAULT_RENDER_API_URL = 'https://dinacharya-backend.onrender.com/api/v1';
+const getFallbackApiUrl = () => {
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost') {
+      return 'http://localhost:8080/api/v1';
+    }
+    return `${window.location.origin}/api/v1`;
+  }
+  return '/api/v1';
+};
 
-// Prefer a configured backend URL; otherwise use the Render service as the safe production default.
 export const API_URL = (
-  import.meta.env.VITE_API_URL ||
-  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? 'http://localhost:8080/api/v1'
-    : DEFAULT_RENDER_API_URL)
+  import.meta.env.VITE_API_URL || getFallbackApiUrl()
 ).replace(/\/$/, '');
 
-/** Browser → Render, skipping Cloudflare's 120s proxy read timeout on long imports. */
 export const IMPORT_API_URL = (
-  import.meta.env.VITE_DIRECT_API_URL ||
-  (API_URL.startsWith('http') ? API_URL : DEFAULT_RENDER_API_URL)
+  import.meta.env.VITE_DIRECT_API_URL || API_URL
 ).replace(/\/$/, '');
 
 export const apiClient = axios.create({

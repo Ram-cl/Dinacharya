@@ -40,13 +40,8 @@ EXPOSE 8080
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true"
 
 # Health check
-<<<<<<< HEAD
-HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=5 \
-  CMD curl -f http://localhost:8080/api/v1/actuator/health/liveness || exit 1
-=======
-HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=5 \
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
   CMD curl -f http://localhost:${PORT:-8080}/api/v1/actuator/health/liveness || exit 1
->>>>>>> 0a4be12f87a5f9479b31935ae4c7bcb602b474d0
 
 # Run the application using exec sh -c to expand JAVA_OPTS properly
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

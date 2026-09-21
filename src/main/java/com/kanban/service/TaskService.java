@@ -78,8 +78,19 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
-    public Page<TaskResponse> getOverdueTasks(Pageable pageable) {
-        return taskRepository.findOverdueTasks(LocalDateTime.now(), pageable)
+    public Page<TaskResponse> getOverdueTasks(UUID currentUserId, Pageable pageable) {
+        User currentUser = userService.getUserEntityById(currentUserId);
+        if (currentUser.getRole() == UserRole.ADMIN) {
+            return taskRepository.findOverdueTasks(LocalDateTime.now(), pageable)
+                .map(taskMapper::toResponse);
+        }
+
+        Set<UUID> teamIds = teamService.getAccessibleTeamIds(currentUserId);
+        if (teamIds.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        return taskRepository.findOverdueTasksByTeamIds(teamIds, LocalDateTime.now(), pageable)
             .map(taskMapper::toResponse);
     }
 
@@ -306,10 +317,11 @@ public class TaskService {
     private void validateTaskEditPermission(Task task, UUID currentUserId) {
         User currentUser = userService.getUserEntityById(currentUserId);
 
-        boolean isCreator = task.getCreatedBy().getId().equals(currentUserId);
+        boolean isCreator = task.getCreatedBy() != null && task.getCreatedBy().getId().equals(currentUserId);
+        boolean isAssignee = task.getAssignedTo() != null && task.getAssignedTo().getId().equals(currentUserId);
         boolean isAdmin = currentUser.getRole() == UserRole.ADMIN;
 
-        if (!isCreator && !isAdmin) {
+        if (!isCreator && !isAssignee && !isAdmin) {
             throw new UnauthorizedException("You don't have permission to edit this task");
         }
     }

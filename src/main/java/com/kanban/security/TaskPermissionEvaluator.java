@@ -49,7 +49,7 @@ public class TaskPermissionEvaluator implements PermissionEvaluator {
 
     private boolean hasPrivilege(Authentication authentication, String targetType, String permission, Object targetObject) {
         String userEmail = authentication.getName();
-        User user = userRepository.findByEmail(userEmail).orElse(null);
+        User user = userRepository.findByEmailIgnoreCase(userEmail).orElse(null);
 
         if (user == null) {
             return false;
@@ -62,12 +62,17 @@ public class TaskPermissionEvaluator implements PermissionEvaluator {
 
         if ("task".equals(targetType) && targetObject instanceof Task task) {
             // Task creator can read/edit/delete
-            if (task.getCreatedBy().getId().equals(user.getId())) {
+            if (task.getCreatedBy() != null && task.getCreatedBy().getId().equals(user.getId())) {
+                return true;
+            }
+
+            // Task assignee can read/edit
+            if (task.getAssignedTo() != null && task.getAssignedTo().getId().equals(user.getId())) {
                 return true;
             }
 
             // For "read" permission, any team member can view
-            if ("read".equals(permission) && task.getTeam().getMembers().contains(user)) {
+            if ("read".equals(permission) && task.getTeam() != null && task.getTeam().getMembers() != null && task.getTeam().getMembers().contains(user)) {
                 return true;
             }
         }

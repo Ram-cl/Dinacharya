@@ -87,6 +87,16 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     @Query("""
         SELECT t FROM Task t 
+        WHERE t.team.id IN :teamIds
+        AND t.deadline IS NOT NULL 
+        AND t.deadline < :now
+        AND t.status != 'DONE'
+        ORDER BY t.deadline ASC
+        """)
+    Page<Task> findOverdueTasksByTeamIds(@Param("teamIds") Set<UUID> teamIds, @Param("now") LocalDateTime now, Pageable pageable);
+
+    @Query("""
+        SELECT t FROM Task t 
         WHERE t.team.id = :teamId
         AND t.deadline IS NOT NULL 
         AND t.deadline < :now

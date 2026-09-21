@@ -119,7 +119,7 @@ public class AuthService {
         }
 
         String userEmail = jwtUtil.extractUsername(refreshToken);
-        User user = userRepository.findByEmail(userEmail)
+        User user = userRepository.findByEmailIgnoreCase(userEmail)
             .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);

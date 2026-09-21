@@ -18,13 +18,10 @@ logging:
     root: WARN
     com.kanban: INFO
     org.springframework.security: WARN
-<<<<<<< HEAD
   file:
     name: logs/kanban-backend.log
     max-size: 1GB
     max-history: 30
-=======
->>>>>>> 0a4be12f87a5f9479b31935ae4c7bcb602b474d0
 
 management:
   endpoints:

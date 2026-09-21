@@ -62,8 +62,12 @@ public class TaskController {
 
     @GetMapping("/overdue")
     @Operation(summary = "Get overdue tasks")
-    public ResponseEntity<Page<TaskResponse>> getOverdueTasks(Pageable pageable) {
-        Page<TaskResponse> tasks = taskService.getOverdueTasks(pageable);
+    public ResponseEntity<Page<TaskResponse>> getOverdueTasks(
+        Authentication authentication,
+        Pageable pageable
+    ) {
+        var user = userDetailsService.loadUserEntityByEmail(authentication.getName());
+        Page<TaskResponse> tasks = taskService.getOverdueTasks(user.getId(), pageable);
         return ResponseEntity.ok(tasks);
     }
 

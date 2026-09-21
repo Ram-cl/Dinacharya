@@ -30,17 +30,29 @@ public class CommentService {
     private final TaskService taskService;
     private final AuditService auditService;
 
-    public Set<CommentResponse> getCommentsByTask(UUID taskId) {
+    public Set<CommentResponse> getCommentsByTask(UUID taskId, UUID userId) {
         Task task = taskService.getTaskEntityById(taskId);
+        validateTaskAccess(task, userId);
         return commentRepository.findByTask(task).stream()
             .map(commentMapper::toResponse)
             .collect(Collectors.toSet());
     }
 
-    public Page<CommentResponse> getCommentsByTaskPaginated(UUID taskId, Pageable pageable) {
+    public Page<CommentResponse> getCommentsByTaskPaginated(UUID taskId, UUID userId, Pageable pageable) {
         Task task = taskService.getTaskEntityById(taskId);
+        validateTaskAccess(task, userId);
         return commentRepository.findByTaskOrderByCreatedAtDesc(task, pageable)
             .map(commentMapper::toResponse);
+    }
+
+    private void validateTaskAccess(Task task, UUID userId) {
+        if (userId == null) return;
+        User user = userService.getUserEntityById(userId);
+        if (user.getRole() == UserRole.ADMIN) return;
+        if (task.getTeam() != null && task.getTeam().getMembers() != null && task.getTeam().getMembers().contains(user)) return;
+        if (task.getCreatedBy() != null && task.getCreatedBy().getId().equals(userId)) return;
+        if (task.getAssignedTo() != null && task.getAssignedTo().getId().equals(userId)) return;
+        throw new UnauthorizedException("You do not have access to view comments for this task");
     }
 
     public Page<CommentResponse> getFlaggedComments(Pageable pageable) {
