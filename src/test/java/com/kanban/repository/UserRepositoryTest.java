@@ -30,7 +30,7 @@ class UserRepositoryTest {
             .email("test@example.com")
             .password("hashedPassword")
             .name("Test User")
-            .role(UserRole.MEMBER)
+            .role(UserRole.USER)
             .department("Engineering")
             .skills(Set.of("Java", "Spring Boot"))
             .isActive(true)
@@ -44,7 +44,7 @@ class UserRepositoryTest {
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getEmail()).isEqualTo("test@example.com");
         assertThat(saved.getName()).isEqualTo("Test User");
-        assertThat(saved.getRole()).isEqualTo(UserRole.MEMBER);
+        assertThat(saved.getRole()).isEqualTo(UserRole.USER);
     }
 
     @Test

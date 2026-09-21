@@ -60,6 +60,15 @@ public class AttendanceAnalyticsService {
             throw new IllegalArgumentException("End date must be on or after start date");
         }
 
+        // Clamp period start to the employee's joining date so working-day denominator
+        // only counts days from when they were actually onboarded.
+        LocalDate joiningDate = user.getJoiningDate() != null
+            ? user.getJoiningDate()
+            : user.getCreatedAt().toLocalDate();
+        if (joiningDate.isAfter(periodStart)) {
+            periodStart = joiningDate;
+        }
+
         List<AttendanceRecord> records = attendanceRecordRepository.findByUserIdAndWorkDateBetween(
             userId,
             periodStart,
@@ -176,7 +185,7 @@ public class AttendanceAnalyticsService {
     }
 
     private static boolean canView(UUID targetUserId, UUID currentUserId, UserRole currentUserRole) {
-        if (currentUserRole == UserRole.ADMIN || currentUserRole == UserRole.MODERATOR) {
+        if (currentUserRole == UserRole.ADMIN) {
             return true;
         }
         return targetUserId.equals(currentUserId);

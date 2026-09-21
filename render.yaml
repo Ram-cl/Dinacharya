@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: dinacharya-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: 3306
+      - key: DB_NAME
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRATION
+        value: 86400000
+      - key: JWT_REFRESH_EXPIRATION
+        value: 604800000
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: ADMIN_ENABLED
+        value: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: FRONTEND_URL
+        value: https://dinacharya-backend.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        value: http://localhost:5173,http://localhost:4173,http://localhost:3000,https://dinacharya-backend.onrender.com,https://*.workers.dev,https://*.pages.dev

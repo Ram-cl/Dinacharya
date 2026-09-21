@@ -43,7 +43,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./Backend/Dockerfile
+          file: ./Dockerfile.backend
           push: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
@@ -62,8 +62,8 @@ jobs:
       - name: Build and push Frontend image
         uses: docker/build-push-action@v4
         with:
-          context: ./Frontend
-          file: ./Frontend/Dockerfile
+          context: ./frontend
+          file: ./frontend/Dockerfile
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
@@ -77,11 +77,14 @@ jobs:
       - name: Deploy to Production
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 30m
+          command_timeout: 25m
           script: |
-            cd /path/to/dashboard
-            docker-compose pull
-            docker-compose up -d
+            cd ~/Dinacharya
+            git pull
+            docker compose down
+            docker compose up -d --build
             docker system prune -f

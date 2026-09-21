@@ -12,6 +12,7 @@ import com.kanban.model.entity.User;
 import com.kanban.model.enums.UserRole;
 import com.kanban.repository.TeamRepository;
 import com.kanban.repository.UserRepository;
+import com.kanban.util.DepartmentNames;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.UUID;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -66,9 +68,9 @@ public class TeamService {
         try {
             User lead = userService.getUserEntityById(leadId);
 
-            if (lead.getRole() != UserRole.TEAM_LEAD && lead.getRole() != UserRole.ADMIN) {
-                lead.setRole(UserRole.TEAM_LEAD);
-                userRepository.save(lead);
+            // Only ADMIN can create teams
+            if (lead.getRole() != UserRole.ADMIN) {
+                throw new UnauthorizedException("Only admin users can create teams");
             }
 
             Team team = Team.builder()
@@ -120,8 +122,8 @@ public class TeamService {
 
         User currentUser = userService.getUserEntityById(currentUserId);
         
-        if (!team.getLead().getId().equals(currentUserId) && currentUser.getRole() != UserRole.ADMIN) {
-            throw new UnauthorizedException("Only team lead or admin can update team");
+        if (currentUser.getRole() != UserRole.ADMIN) {
+            throw new UnauthorizedException("Only admin can update team");
         }
 
         teamMapper.updateTeamFromRequest(request, team);
@@ -137,8 +139,8 @@ public class TeamService {
 
         User currentUser = userService.getUserEntityById(currentUserId);
         
-        if (!team.getLead().getId().equals(currentUserId) && currentUser.getRole() != UserRole.ADMIN) {
-            throw new UnauthorizedException("Only team lead or admin can add members");
+        if (currentUser.getRole() != UserRole.ADMIN) {
+            throw new UnauthorizedException("Only admin can add members");
         }
 
         User newMember = userService.getUserEntityById(userId);
@@ -155,8 +157,8 @@ public class TeamService {
 
         User currentUser = userService.getUserEntityById(currentUserId);
         
-        if (!team.getLead().getId().equals(currentUserId) && currentUser.getRole() != UserRole.ADMIN) {
-            throw new UnauthorizedException("Only team lead or admin can remove members");
+        if (currentUser.getRole() != UserRole.ADMIN) {
+            throw new UnauthorizedException("Only admin can remove members");
         }
 
         if (team.getLead().getId().equals(userId)) {
@@ -177,8 +179,8 @@ public class TeamService {
 
         User currentUser = userService.getUserEntityById(currentUserId);
         
-        if (!team.getLead().getId().equals(currentUserId) && currentUser.getRole() != UserRole.ADMIN) {
-            throw new UnauthorizedException("Only team lead or admin can delete team");
+        if (currentUser.getRole() != UserRole.ADMIN) {
+            throw new UnauthorizedException("Only admin can delete team");
         }
 
         teamRepository.delete(team);
@@ -207,6 +209,39 @@ public class TeamService {
             .tasks(new HashSet<>())
             .build();
         team.getMembers().add(user);
+        return teamRepository.save(team);
+    }
+
+    /**
+     * Each department is a team of the same name (ASE, DevOps, UI, …).
+     */
+    @Transactional
+    public Team getOrCreateDepartmentTeam(String departmentName, User lead) {
+        String name = DepartmentNames.canonical(departmentName);
+        if (name == null || name.isBlank()) {
+            name = "Engineering";
+        }
+        final String teamName = name;
+        User managedLead = lead;
+        if (lead != null && lead.getId() != null) {
+            managedLead = userRepository.findById(lead.getId()).orElse(lead);
+        }
+        final User teamLead = managedLead;
+        List<Team> existing = teamRepository.findByNameIgnoreCase(teamName);
+        if (!existing.isEmpty()) {
+            // If duplicates exist, return the first one (oldest by natural order)
+            return existing.get(0);
+        }
+        Team team = Team.builder()
+                .name(teamName)
+                .description("Department: " + teamName)
+                .lead(teamLead)
+                .members(new HashSet<>())
+                .tasks(new HashSet<>())
+                .build();
+        if (teamLead != null) {
+            team.getMembers().add(teamLead);
+        }
         return teamRepository.save(team);
     }
 

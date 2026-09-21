@@ -42,8 +42,8 @@ public class AttendanceRecord {
     private LocalDateTime exitTime;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private AttendanceStatus status = AttendanceStatus.OFFLINE;
+    @Column(nullable = false, length = 50, columnDefinition = "VARCHAR(50)")
+    private AttendanceStatus status = AttendanceStatus.ABSENT;
 
     @OneToMany(mappedBy = "attendanceRecord", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default

@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;
@@ -34,6 +35,7 @@ public class UserResponse {
     private EmploymentType employmentType;
     private Boolean isActive;
     private LocalDateTime lastActive;
+    private LocalDate joiningDate;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String temporaryPassword;

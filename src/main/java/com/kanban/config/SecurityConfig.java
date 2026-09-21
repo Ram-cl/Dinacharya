@@ -3,6 +3,7 @@ package com.kanban.config;
 import com.kanban.security.JwtAuthenticationFilter;
 import com.kanban.security.TaskPermissionEvaluator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
@@ -38,6 +39,9 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
     private final TaskPermissionEvaluator taskPermissionEvaluator;
 
+    @Value("${app.cors.allowed-origins:${app.frontend-url:http://localhost:5173}}")
+    private String allowedOrigins;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -59,7 +63,19 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
+<<<<<<< HEAD
         configuration.setAllowedOriginPatterns(List.of("*"));
+=======
+        List<String> patterns = new java.util.ArrayList<>();
+        Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .forEach(patterns::add);
+        patterns.add("https://*.workers.dev");
+        patterns.add("https://*.pages.dev");
+        patterns.add("http://localhost:*");
+        configuration.setAllowedOriginPatterns(patterns);
+>>>>>>> 0a4be12f87a5f9479b31935ae4c7bcb602b474d0
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept"));
         configuration.setExposedHeaders(List.of("Authorization"));

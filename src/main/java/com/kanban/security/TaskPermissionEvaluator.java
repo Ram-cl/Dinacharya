@@ -55,19 +55,14 @@ public class TaskPermissionEvaluator implements PermissionEvaluator {
             return false;
         }
 
-        // Admins and moderators have full access
-        if (user.getRole() == UserRole.ADMIN || user.getRole() == UserRole.MODERATOR) {
+        // Admin has full access
+        if (user.getRole() == UserRole.ADMIN) {
             return true;
         }
 
         if ("task".equals(targetType) && targetObject instanceof Task task) {
-            // Task creator can edit/delete
+            // Task creator can read/edit/delete
             if (task.getCreatedBy().getId().equals(user.getId())) {
-                return true;
-            }
-
-            // Team lead can edit/delete tasks in their team
-            if (user.getRole() == UserRole.TEAM_LEAD && task.getTeam().getLead().getId().equals(user.getId())) {
                 return true;
             }
 

@@ -1,7 +1,13 @@
 package com.kanban.model.enums;
 
 public enum AttendanceStatus {
+    PRESENT,
+    ABSENT,
+    HALF_DAY,
+    LEAVE,
+    WORK_FROM_HOME,
     ONLINE,
-    ON_BREAK,
-    OFFLINE
+    OFFLINE,
+    AWAY,
+    ON_BREAK
 }

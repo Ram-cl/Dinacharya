@@ -1,8 +1,9 @@
 export const DEPARTMENTS = [
+  'ASE',
   'Business Development',
-  'CyberSecurity',
+  'Cybersecurity',
   'Dev',
-  'Devops',
+  'DevOps',
   'Engineering',
   'UI',
 ] as const;

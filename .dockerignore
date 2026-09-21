@@ -49,6 +49,9 @@ docs/
 # Demo scripts
 *.py
 
-# Database dumps
-*.sql
+# Frontend (not needed for backend image)
+frontend/
+
+# Spreadsheets / dumps
+*.xlsx
 *.db

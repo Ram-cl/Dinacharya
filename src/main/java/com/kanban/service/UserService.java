@@ -115,6 +115,9 @@ public class UserService {
         if (request.getEmployeeStatus() != null) {
             user.setEmployeeStatus(request.getEmployeeStatus());
         }
+        if (request.getJoiningDate() != null) {
+            user.setJoiningDate(request.getJoiningDate());
+        }
 
         user = userRepository.save(user);
         return userMapper.toResponse(user);
@@ -153,11 +156,9 @@ public class UserService {
     @Transactional
     public UserResponse updateEmploymentType(UUID id, EmploymentType employmentType, UUID currentUserId) {
         User currentUser = getUserEntityById(currentUserId);
-        if (currentUser.getRole() != UserRole.ADMIN
-            && currentUser.getRole() != UserRole.MODERATOR
-            && currentUser.getRole() != UserRole.TEAM_LEAD) {
+        if (currentUser.getRole() != UserRole.ADMIN) {
             throw new UnauthorizedException(
-                "Only team leads, moderators, or admins can change employment type"
+                "Only admin can change employment type"
             );
         }
 
@@ -208,9 +209,10 @@ public class UserService {
             .professionalRole(StringUtils.hasText(request.getProfessionalRole()) ? request.getProfessionalRole().trim() : null)
             .githubProfile(normalizeGithub(request.getGithubProfile()))
             .employeeStatus(EmployeeStatus.ONBOARDING)
-            .role(UserRole.MEMBER)
+            .role(UserRole.USER)
             .employmentType(EmploymentType.FULL_TIME)
             .isActive(true)
+            .joiningDate(request.getJoiningDate() != null ? request.getJoiningDate() : java.time.LocalDate.now())
             .skills(new HashSet<>())
             .teams(new HashSet<>())
             .comments(new HashSet<>())
@@ -271,7 +273,7 @@ public class UserService {
             teamRepository.save(team);
         }
 
-        taskRepository.clearAssignee(id);
+        taskRepository.deleteByAssignedTo_Id(id);
         taskRepository.reassignCreator(id, currentUser);
         commentRepository.deleteByAuthor_Id(id);
         attachmentRepository.deleteByUploadedBy_Id(id);
@@ -299,4 +301,5 @@ public class UserService {
         value = value.trim();
         return StringUtils.hasText(value) ? value : null;
     }
+
 }

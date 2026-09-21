@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Upload, FileSpreadsheet, FileText, Download, AlertCircle, CheckCircle, X } from 'lucide-react';
-import { apiClient } from '@/api/client';
+import { apiClient, IMPORT_API_URL } from '@/api/client';
+import { useTeams } from '@/hooks/useTeams';
+import { Team } from '@/types';
 
 interface TaskImportResponse {
   totalRows: number;
@@ -12,15 +15,26 @@ interface TaskImportResponse {
 }
 
 interface TaskImportProps {
-  teamId: string;
+  teamId?: string;
   onImportSuccess?: (result: TaskImportResponse) => void;
 }
 
 const TaskImport: React.FC<TaskImportProps> = ({ teamId, onImportSuccess }) => {
+  const queryClient = useQueryClient();
+  const { data: teamsPage } = useTeams(0, 50);
+  const teams = teamsPage?.content || [];
   const [importing, setImporting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [importResult, setImportResult] = useState<TaskImportResponse | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [attendanceMode, setAttendanceMode] = useState(false);
+
+  // Default import date to today
+  const todayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [importDate, setImportDate] = useState(todayStr());
 
   const handleFileUpload = async (file: File | null) => {
     if (!file) return;
@@ -34,7 +48,11 @@ const TaskImport: React.FC<TaskImportProps> = ({ teamId, onImportSuccess }) => {
       return;
     }
 
-    const fileType = file.name.endsWith('.xlsx') ? 'excel' : 'word';
+    const isExcel = file.name.toLowerCase().endsWith('.xlsx');
+    // Attendance tasksheet parsing only applies to Excel files.
+    const endpoint = attendanceMode && isExcel
+      ? 'attendance'
+      : (isExcel ? 'excel' : 'word');
     setImporting(true);
     setImportResult(null);
 
@@ -42,29 +60,48 @@ const TaskImport: React.FC<TaskImportProps> = ({ teamId, onImportSuccess }) => {
       const formData = new FormData();
       formData.append('file', file);
 
+      let resolvedTeamId = teamId || teams[0]?.id;
+      if (!resolvedTeamId) {
+        const created = await apiClient.post<Team>('/teams', {
+          name: 'ASE',
+          description: 'Department: ASE',
+        });
+        resolvedTeamId = created.data.id;
+        await queryClient.invalidateQueries({ queryKey: ['teams'] });
+      }
+
       const response = await apiClient.post<TaskImportResponse>(
-        `/import/tasks/${fileType}/${teamId}`,
+        `/import/tasks/${endpoint}/${resolvedTeamId}${attendanceMode && importDate ? `?importDate=${importDate}` : ''}`,
         formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        }
+        { baseURL: IMPORT_API_URL, timeout: 300000 }
       );
 
       const result = response.data;
       setImportResult(result);
       
       if (result.successCount > 0) {
+        queryClient.invalidateQueries({ queryKey: ['attendance'] });
         onImportSuccess?.(result);
       }
     } catch (error: any) {
       console.error('Import failed:', error);
+      const status = error.response?.status;
+      const rateLimited =
+        status === 429
+          ? 'Too many requests (HTTP 429). Wait 1–2 minutes, then try once.'
+          : status === 503
+            ? 'The live API is waking up or restarting (HTTP 503). Open https://dinacharya-ese5.onrender.com/api/v1/actuator/health, wait until it shows UP, then try again.'
+          : null;
       setImportResult({
         totalRows: 0,
         successCount: 0,
         failureCount: 1,
-        errors: [error.response?.data?.message || 'Import failed: ' + error.message],
+        errors: [
+          rateLimited ||
+            error.response?.data?.detail ||
+            error.response?.data?.message ||
+            'Import failed: ' + error.message,
+        ],
         importedTasks: [],
         message: 'Import failed'
       });
@@ -152,10 +189,62 @@ const TaskImport: React.FC<TaskImportProps> = ({ teamId, onImportSuccess }) => {
             Template
           </button>
 
+          {/* Attendance format toggle */}
+          <label className="flex items-center gap-2 text-sm text-charcoal cursor-pointer select-none px-3 py-2 rounded-lg border border-warm-border bg-white hover:bg-sand/40 transition-colors">
+            <input
+              type="checkbox"
+              checked={attendanceMode}
+              onChange={(e) => setAttendanceMode(e.target.checked)}
+              disabled={importing}
+              className="accent-terracotta w-4 h-4"
+            />
+            <span className="material-symbols-outlined text-[16px] text-terracotta">event_note</span>
+            Attendance tasksheet
+          </label>
+
+          {/* Date filter — only shown in attendance mode */}
+          {attendanceMode && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-terracotta/30 bg-terracotta/5">
+              <span className="material-symbols-outlined text-[16px] text-terracotta">calendar_today</span>
+              <label htmlFor="import-date" className="text-sm font-medium text-charcoal whitespace-nowrap">
+                Import date
+              </label>
+              <input
+                id="import-date"
+                type="date"
+                value={importDate}
+                onChange={(e) => setImportDate(e.target.value)}
+                disabled={importing}
+                className="border border-warm-border rounded-lg px-2 py-1 text-sm text-charcoal bg-white focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+              />
+              {importDate ? (
+                <button
+                  type="button"
+                  onClick={() => setImportDate('')}
+                  className="text-xs text-charcoal-muted hover:text-terracotta underline whitespace-nowrap transition-colors"
+                  title="Remove date filter — import all rows"
+                >
+                  All dates
+                </button>
+              ) : (
+                <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">warning</span>
+                  Imports all rows
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Info */}
-          <div className="text-sm text-charcoal-muted">
-            Supported: .xlsx, .docx
-          </div>
+          {attendanceMode && importDate && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#22c55e]/10 text-[#16a34a] text-xs font-medium">
+              <span className="material-symbols-outlined text-[14px]">check_circle</span>
+              Importing {importDate} only
+            </div>
+          )}
+          {!attendanceMode && (
+            <span className="text-sm text-charcoal-muted">Supported: .xlsx, .docx</span>
+          )}
         </div>
 
         {/* Drag & Drop Zone */}

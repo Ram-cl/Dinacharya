@@ -50,7 +50,7 @@ class PasswordResetIntegrationTest {
             .email("worker@example.com")
             .password(passwordEncoder.encode("OldPass123"))
             .name("Worker")
-            .role(UserRole.MEMBER)
+            .role(UserRole.USER)
             .isActive(true)
             .build());
     }

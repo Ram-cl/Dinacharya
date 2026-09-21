@@ -8,6 +8,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -27,4 +29,6 @@ public class UpdateMemberRequest {
     private String department;
 
     private EmployeeStatus employeeStatus;
+
+    private LocalDate joiningDate;
 }

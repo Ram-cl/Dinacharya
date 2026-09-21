@@ -199,3 +199,22 @@ export const useAssignTask = (id: string) => {
     },
   });
 };
+
+export const useDeleteAllTasks = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (teamId?: string) => {
+      const url = teamId ? `/tasks/all?teamId=${teamId}&confirm=true` : '/tasks/all?confirm=true';
+      const response = await apiClient.delete<{ message: string; deletedCount: number }>(url);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success(`${data.deletedCount} task(s) deleted successfully`);
+    },
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, 'Failed to delete all tasks'));
+    },
+  });
+};

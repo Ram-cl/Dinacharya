@@ -17,6 +17,8 @@ import java.util.UUID;
 @Repository
 public interface AttendanceRecordRepository extends JpaRepository<AttendanceRecord, UUID> {
 
+    List<AttendanceRecord> findByWorkDate(LocalDate workDate);
+
     Optional<AttendanceRecord> findByUserIdAndWorkDate(UUID userId, LocalDate workDate);
 
     @Query("""

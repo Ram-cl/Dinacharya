@@ -14,6 +14,8 @@ import com.kanban.repository.EmployeePerformanceSnapshotRepository;
 import com.kanban.repository.TaskRepository;
 import com.kanban.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EmployeePerformanceService {
 
     private static final double PRODUCTIVITY_WEIGHT = 0.4;
@@ -98,6 +101,18 @@ public class EmployeePerformanceService {
         LocalDate today = LocalDate.now();
         LocalDate periodStart = today.with(TemporalAdjusters.firstDayOfMonth());
         computeSnapshotsForPeriod(periodStart, today);
+    }
+
+    @Scheduled(cron = "0 0 1 * * *")
+    @Transactional
+    public void scheduleMonthlyPerformanceComputation() {
+        try {
+            log.info("Starting scheduled monthly performance computation");
+            computeCurrentMonthSnapshots();
+            log.info("Monthly performance computation completed successfully");
+        } catch (Exception e) {
+            log.error("Error during scheduled monthly performance computation", e);
+        }
     }
 
     @Transactional
@@ -203,7 +218,14 @@ public class EmployeePerformanceService {
     }
 
     RawScores calculateRawScores(User employee, LocalDate periodStart, LocalDate periodEnd) {
-        LocalDateTime start = periodStart.atStartOfDay();
+        // Clamp period start to the employee's joining date so working-day count only
+        // includes days from when they actually started — not before their onboarding.
+        LocalDate joiningDate = employee.getJoiningDate() != null
+            ? employee.getJoiningDate()
+            : employee.getCreatedAt().toLocalDate();
+        LocalDate effectiveStart = joiningDate.isAfter(periodStart) ? joiningDate : periodStart;
+
+        LocalDateTime start = effectiveStart.atStartOfDay();
         LocalDateTime endExclusive = periodEnd.plusDays(1).atStartOfDay();
 
         List<Task> completedTasks = taskRepository.findCompletedTasksForUserInPeriod(
@@ -242,7 +264,7 @@ public class EmployeePerformanceService {
 
         List<AttendanceRecord> attendance = attendanceRecordRepository.findByUserIdAndWorkDateBetween(
             employee.getId(),
-            periodStart,
+            effectiveStart,
             periodEnd
         );
         int attendanceDays = (int) attendance.stream()
@@ -257,7 +279,7 @@ public class EmployeePerformanceService {
             tasksAssigned,
             onTimeTasks,
             attendanceDays,
-            workingDaysBetween(periodStart, periodEnd).size()
+            workingDaysBetween(effectiveStart, periodEnd).size()
         );
     }
 

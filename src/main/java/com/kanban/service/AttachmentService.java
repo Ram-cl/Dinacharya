@@ -9,7 +9,6 @@ import com.kanban.model.entity.Task;
 import com.kanban.model.entity.User;
 import com.kanban.model.enums.UserRole;
 import com.kanban.repository.AttachmentRepository;
-import com.kanban.websocket.WebSocketEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +29,6 @@ public class AttachmentService {
     private final TaskService taskService;
     private final FileStorageService fileStorageService;
     private final AuditService auditService;
-    private final WebSocketEventPublisher webSocketEventPublisher;
 
     public Set<AttachmentResponse> getAttachmentsByTask(UUID taskId) {
         Task task = taskService.getTaskEntityById(taskId);
@@ -62,10 +60,7 @@ public class AttachmentService {
         attachment = attachmentRepository.save(attachment);
         auditService.logAttachmentAdded(uploadedById, attachment.getId(), taskId, file.getOriginalFilename());
 
-        AttachmentResponse response = attachmentMapper.toResponse(attachment);
-        webSocketEventPublisher.publishAttachmentAdded(task.getTeam().getId(), taskId, response);
-
-        return response;
+        return attachmentMapper.toResponse(attachment);
     }
 
     @Transactional
@@ -76,10 +71,9 @@ public class AttachmentService {
         User currentUser = userService.getUserEntityById(currentUserId);
 
         boolean isUploader = attachment.getUploadedBy().getId().equals(currentUserId);
-        boolean isTeamLead = attachment.getTask().getTeam().getLead().getId().equals(currentUserId);
-        boolean isModerator = currentUser.getRole() == UserRole.MODERATOR || currentUser.getRole() == UserRole.ADMIN;
+        boolean isAdmin = currentUser.getRole() == UserRole.ADMIN;
 
-        if (!isUploader && !isTeamLead && !isModerator) {
+        if (!isUploader && !isAdmin) {
             throw new UnauthorizedException("You don't have permission to delete this attachment");
         }
 
@@ -92,6 +86,5 @@ public class AttachmentService {
         fileStorageService.deleteFile(fileUrl);
 
         auditService.logAttachmentDeleted(currentUserId, id, fileName);
-        webSocketEventPublisher.publishAttachmentDeleted(teamId, taskId, id);
     }
 }

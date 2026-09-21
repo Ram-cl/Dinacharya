@@ -6,11 +6,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
-import Dashboard from './pages/Dashboard';
-import TeamBoard from './pages/TeamBoard';
 import Profile from './pages/Profile';
-import TeamSettings from './pages/TeamSettings';
-import Analytics from './pages/Analytics';
 import ModeratorPanel from './pages/ModeratorPanel';
 import TaskManagement from './pages/TaskManagement';
 import TeamPeople from './pages/TeamPeople';
@@ -18,6 +14,7 @@ import EmployeeDashboard from './pages/EmployeeDashboard';
 import EmployeePerformance from './pages/EmployeePerformance';
 import EmployeePerformanceDetail from './pages/EmployeePerformanceDetail';
 import EmployeeAttendanceDashboard from './pages/EmployeeAttendanceDashboard';
+import TaskAnalytics from './pages/TaskAnalytics';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
@@ -90,34 +87,10 @@ function App() {
           }
         />
         <Route
-          path="teams"
+          path="task-analytics"
           element={
             <AdminRoute>
-              <Dashboard />
-            </AdminRoute>
-          }
-        />
-        <Route
-          path="teams/:teamId"
-          element={
-            <AdminRoute>
-              <TeamBoard />
-            </AdminRoute>
-          }
-        />
-        <Route
-          path="teams/:teamId/settings"
-          element={
-            <AdminRoute>
-              <TeamSettings />
-            </AdminRoute>
-          }
-        />
-        <Route
-          path="teams/:teamId/analytics"
-          element={
-            <AdminRoute>
-              <Analytics />
+              <TaskAnalytics />
             </AdminRoute>
           }
         />

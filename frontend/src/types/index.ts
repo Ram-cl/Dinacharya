@@ -21,6 +21,8 @@ export enum TaskPriority {
 }
 
 export enum AttendanceStatus {
+  PRESENT = 'PRESENT',
+  ABSENT = 'ABSENT',
   ONLINE = 'ONLINE',
   ON_BREAK = 'ON_BREAK',
   OFFLINE = 'OFFLINE',
@@ -54,6 +56,7 @@ export interface User {
   employmentType?: EmploymentType;
   isActive: boolean;
   lastActive?: string;
+  joiningDate?: string;   // ISO date string YYYY-MM-DD
   createdAt: string;
   updatedAt: string;
   temporaryPassword?: string;
@@ -178,7 +181,7 @@ export interface AttendanceBreak {
 }
 
 export interface AttendanceRecord {
-  id: string;
+  id?: string;
   userId: string;
   memberName: string;
   memberEmail: string;
@@ -252,6 +255,7 @@ export interface CreateMemberRequest {
   department: string;
   professionalRole?: string;
   githubProfile?: string;
+  joiningDate?: string;   // ISO date YYYY-MM-DD
 }
 
 export interface UpdateMemberRequest {
@@ -260,6 +264,7 @@ export interface UpdateMemberRequest {
   githubProfile?: string;
   department?: string;
   employeeStatus?: EmployeeStatus;
+  joiningDate?: string;   // ISO date YYYY-MM-DD
 }
 
 export interface AttendanceFilters {
@@ -335,19 +340,6 @@ export interface CreateCommentRequest {
   content: string;
 }
 
-// WebSocket event types
-export interface WebSocketEvent {
-  type: 'TASK_CREATED' | 'TASK_UPDATED' | 'TASK_DELETED' | 'TASK_ASSIGNED' | 
-        'COMMENT_ADDED' | 'COMMENT_DELETED' |
-        'ATTACHMENT_ADDED' | 'ATTACHMENT_DELETED';
-  task?: Task;
-  taskId?: string;
-  comment?: Comment;
-  commentId?: string;
-  attachment?: Attachment;
-  attachmentId?: string;
-}
-
 // Paginated response
 export interface Page<T> {
   content: T[];
@@ -355,4 +347,63 @@ export interface Page<T> {
   totalPages: number;
   size: number;
   number: number;
+}
+
+
+// Task Completion Analytics types
+export interface TaskCompletionAnalytics {
+  periodStart: string;
+  periodEnd: string;
+  totalTasks: number;
+  completedTasks: number;
+  inProgressTasks: number;
+  todoTasks: number;
+  inReviewTasks: number;
+  completionRate: number;
+  onTimeRate: number;
+  overdueTasks: number;
+  avgCompletionTimeHours?: number;
+  avgTimeInProgressHours?: number;
+  byStatus: StatusBreakdown[];
+  byPriority: PriorityBreakdown[];
+  byAssignee: AssigneeBreakdown[];
+  dailyTrend: DailyTrend[];
+  weeklyTrend: WeeklyTrend[];
+}
+
+export interface StatusBreakdown {
+  status: string;
+  count: number;
+  percentage: number;
+}
+
+export interface PriorityBreakdown {
+  priority: string;
+  total: number;
+  completed: number;
+  completionRate: number;
+}
+
+export interface AssigneeBreakdown {
+  userId: string;
+  userName: string;
+  assigned: number;
+  completed: number;
+  completionRate: number;
+  overdue: number;
+}
+
+export interface DailyTrend {
+  date: string;
+  created: number;
+  completed: number;
+  netChange: number;
+}
+
+export interface WeeklyTrend {
+  weekStart: string;
+  weekLabel: string;
+  created: number;
+  completed: number;
+  completionRate: number;
 }

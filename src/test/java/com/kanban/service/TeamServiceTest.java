@@ -53,7 +53,7 @@ class TeamServiceTest {
             .id(UUID.randomUUID())
             .email("lead@example.com")
             .name("Lead")
-            .role(UserRole.MEMBER)
+            .role(UserRole.ADMIN)  // Use ADMIN for test team lead
             .isActive(true)
             .build();
 
@@ -86,16 +86,15 @@ class TeamServiceTest {
     }
 
     @Test
-    void shouldPromoteCreatorToTeamLeadWhenCreatingTeam() {
+    void shouldRequireAdminRoleWhenCreatingTeam() {
         when(userService.getUserEntityById(lead.getId())).thenReturn(lead);
         when(teamRepository.save(any(Team.class))).thenReturn(savedTeam);
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         TeamResponse result = teamService.createTeam(createRequest, lead.getId());
 
         assertThat(result).isNotNull();
         assertThat(result.getName()).isEqualTo("Platform Team");
-        assertThat(lead.getRole()).isEqualTo(UserRole.TEAM_LEAD);
-        verify(userRepository).save(lead);
+        assertThat(lead.getRole()).isEqualTo(UserRole.ADMIN);
+        verify(teamRepository).save(any(Team.class));
     }
 }

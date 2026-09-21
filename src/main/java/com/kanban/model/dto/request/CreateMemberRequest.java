@@ -8,6 +8,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -33,4 +35,6 @@ public class CreateMemberRequest {
     private String department;
 
     private String password;
+
+    private LocalDate joiningDate;
 }

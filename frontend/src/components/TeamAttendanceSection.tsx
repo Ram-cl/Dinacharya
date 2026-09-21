@@ -11,9 +11,8 @@ import {
   useAttendance,
   useCreateAttendance,
   useUpdateAttendance,
-  useDeleteAttendance,
 } from '@/hooks/useAttendance';
-import { useUsers, useDepartments, useCreateMember, useCreateDepartment, useDeleteDepartment } from '@/hooks/useUsers';
+import { useUsers, useDepartments, useCreateMember, useCreateDepartment, useDeleteDepartment, useDeleteMember } from '@/hooks/useUsers';
 import { toast } from 'react-toastify';
 
 const CUSTOM_DEPARTMENT = '__custom__';
@@ -71,26 +70,24 @@ function combineDateAndTime(workDate: string, time: string): string | undefined 
   return `${workDate}T${time}:00`;
 }
 
+function isPresent(status: AttendanceStatus) {
+  return (
+    status === AttendanceStatus.PRESENT ||
+    status === AttendanceStatus.ONLINE ||
+    status === AttendanceStatus.ON_BREAK
+  );
+}
+
 function statusBadgeClass(status: AttendanceStatus) {
-  switch (status) {
-    case AttendanceStatus.ONLINE:
-      return 'badge-success';
-    case AttendanceStatus.ON_BREAK:
-      return 'badge-warning';
-    default:
-      return 'badge-neutral';
-  }
+  return isPresent(status) ? 'badge-success' : 'badge-neutral';
 }
 
 function statusLabel(status: AttendanceStatus) {
-  switch (status) {
-    case AttendanceStatus.ONLINE:
-      return 'Online';
-    case AttendanceStatus.ON_BREAK:
-      return 'On Break';
-    default:
-      return 'Offline';
-  }
+  return isPresent(status) ? 'Present' : 'Absent';
+}
+
+function toPresentAbsent(status: AttendanceStatus) {
+  return isPresent(status) ? AttendanceStatus.PRESENT : AttendanceStatus.ABSENT;
 }
 
 function emptyNewMember(): NewMemberFormState {
@@ -109,7 +106,7 @@ function emptyForm(workDate: string): AttendanceFormState {
     workDate,
     entryTime: '',
     exitTime: '',
-    status: AttendanceStatus.OFFLINE,
+    status: AttendanceStatus.ABSENT,
     breaks: [{ startTime: '', endTime: '' }],
   };
 }
@@ -120,7 +117,7 @@ function recordToForm(record: AttendanceRecord): AttendanceFormState {
     workDate: record.workDate,
     entryTime: extractTime(record.entryTime),
     exitTime: extractTime(record.exitTime),
-    status: record.status,
+    status: toPresentAbsent(record.status),
     breaks:
       record.breaks.length > 0
         ? record.breaks.map((b) => ({
@@ -199,7 +196,7 @@ export default function TeamAttendanceSection() {
   const deleteDepartment = useDeleteDepartment();
   const createAttendance = useCreateAttendance();
   const updateAttendance = useUpdateAttendance();
-  const deleteAttendance = useDeleteAttendance();
+  const deleteMember = useDeleteMember();
 
   const records = useMemo(() => {
     const content = attendancePage?.content || [];
@@ -351,7 +348,7 @@ export default function TeamAttendanceSection() {
     const exitTime = combineDateAndTime(form.workDate, form.exitTime);
 
     try {
-      if (editingRecord) {
+      if (editingRecord?.id) {
         const payload: UpdateAttendanceRequest = {
           entryTime,
           exitTime,
@@ -361,7 +358,7 @@ export default function TeamAttendanceSection() {
         await updateAttendance.mutateAsync({ id: editingRecord.id, data: payload });
       } else {
         const payload: CreateAttendanceRequest = {
-          userId,
+          userId: editingRecord?.userId || userId,
           workDate: form.workDate,
           entryTime,
           exitTime,
@@ -377,8 +374,8 @@ export default function TeamAttendanceSection() {
   };
 
   const handleDelete = (record: AttendanceRecord) => {
-    if (!confirm(`Remove attendance record for ${record.memberName}?`)) return;
-    deleteAttendance.mutate(record.id);
+    if (!confirm(`Remove ${record.memberName} from the attendance roster?`)) return;
+    deleteMember.mutate(record.userId);
   };
 
   const handleDeleteDepartment = () => {
@@ -399,8 +396,53 @@ export default function TeamAttendanceSection() {
 
   const weeklyBarWidth = (minutes: number) => Math.min(100, Math.round((minutes / (8 * 60)) * 100));
 
+  // Calculate attendance statistics
+  const stats = useMemo(() => {
+    if (records.length === 0) {
+      return { totalHours: 0, avgHours: 0, presentCount: 0, absentCount: 0, attendanceRate: 0 };
+    }
+    const totalMinutes = records.reduce((sum, r) => sum + (r.hoursTodayMinutes || 0), 0);
+    const totalHours = totalMinutes / 60;
+    const avgHours = totalHours / records.length;
+    const presentCount = records.filter((r) => isPresent(r.status)).length;
+    const absentCount = records.length - presentCount;
+    const attendanceRate = Math.round((presentCount / records.length) * 100);
+
+    return {
+      totalHours: Math.round(totalHours * 10) / 10,
+      avgHours: Math.round(avgHours * 10) / 10,
+      presentCount,
+      absentCount,
+      attendanceRate,
+    };
+  }, [records]);
+
   return (
     <>
+    {/* Attendance Summary Stats */}
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+      <div className="bg-gradient-to-br from-success/10 to-success/5 border border-success/20 rounded-lg p-3">
+        <p className="text-label-xs text-charcoal-muted mb-1">Present</p>
+        <p className="text-headline-md text-success font-semibold">{stats.presentCount}</p>
+      </div>
+      <div className="bg-gradient-to-br from-error/10 to-error/5 border border-error/20 rounded-lg p-3">
+        <p className="text-label-xs text-charcoal-muted mb-1">Absent</p>
+        <p className="text-headline-md text-error font-semibold">{stats.absentCount}</p>
+      </div>
+      <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-lg p-3">
+        <p className="text-label-xs text-charcoal-muted mb-1">Total Hours</p>
+        <p className="text-headline-md text-primary font-semibold">{stats.totalHours}h</p>
+      </div>
+      <div className="bg-gradient-to-br from-info/10 to-info/5 border border-info/20 rounded-lg p-3">
+        <p className="text-label-xs text-charcoal-muted mb-1">Avg Hours</p>
+        <p className="text-headline-md text-info font-semibold">{stats.avgHours}h</p>
+      </div>
+      <div className="bg-gradient-to-br from-purple/10 to-purple/5 border border-purple/20 rounded-lg p-3">
+        <p className="text-label-xs text-charcoal-muted mb-1">Attendance</p>
+        <p className="text-headline-md text-purple font-semibold">{stats.attendanceRate}%</p>
+      </div>
+    </div>
+
     <div className="card">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
         <div>
@@ -409,7 +451,15 @@ export default function TeamAttendanceSection() {
             Track member entry, exit, and breaks for {formatDisplayDate(selectedDate)}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            className="btn btn-secondary flex items-center gap-2"
+            title="Generate detailed attendance report"
+          >
+            <span className="material-symbols-outlined text-[18px]">assessment</span>
+            Report
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -472,9 +522,8 @@ export default function TeamAttendanceSection() {
             className="input max-w-[160px]"
           >
             <option value="">All Statuses</option>
-            <option value={AttendanceStatus.ONLINE}>Online</option>
-            <option value={AttendanceStatus.ON_BREAK}>On Break</option>
-            <option value={AttendanceStatus.OFFLINE}>Offline</option>
+            <option value={AttendanceStatus.PRESENT}>Present</option>
+            <option value={AttendanceStatus.ABSENT}>Absent</option>
           </select>
           <form
             className="relative min-w-[240px] flex items-center"
@@ -540,7 +589,7 @@ export default function TeamAttendanceSection() {
               </tr>
             ) : (
               records.map((record) => (
-                <tr key={record.id} className="border-t border-warm-border hover:bg-sand/40">
+                <tr key={record.id || record.userId} className="border-t border-warm-border hover:bg-sand/40">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="avatar-sm bg-primary text-on-primary">
@@ -596,7 +645,7 @@ export default function TeamAttendanceSection() {
                         type="button"
                         onClick={() => handleDelete(record)}
                         className="p-2 text-charcoal-muted hover:text-error rounded-lg hover:bg-error-container/30"
-                        title="Delete"
+                        title="Remove member"
                       >
                         <span className="material-symbols-outlined text-[18px]">delete</span>
                       </button>
@@ -805,9 +854,8 @@ export default function TeamAttendanceSection() {
                   onChange={(e) => setForm({ ...form, status: e.target.value as AttendanceStatus })}
                   className="input"
                 >
-                  <option value={AttendanceStatus.ONLINE}>Online</option>
-                  <option value={AttendanceStatus.ON_BREAK}>On Break</option>
-                  <option value={AttendanceStatus.OFFLINE}>Offline</option>
+                  <option value={AttendanceStatus.PRESENT}>Present</option>
+                  <option value={AttendanceStatus.ABSENT}>Absent</option>
                 </select>
               </div>
 

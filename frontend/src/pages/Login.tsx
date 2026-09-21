@@ -37,8 +37,15 @@ export default function Login() {
   }, [isAuthenticated, navigate, user]);
 
   const onSubmit = async (data: LoginForm) => {
-    const result = await loginMutation.mutateAsync(data);
-    navigate(homePath(result.user));
+    try {
+      const result = await loginMutation.mutateAsync({
+        ...data,
+        email: data.email.trim().toLowerCase(),
+      });
+      navigate(homePath(result.user));
+    } catch {
+      // toast is shown by useLogin
+    }
   };
 
   return (

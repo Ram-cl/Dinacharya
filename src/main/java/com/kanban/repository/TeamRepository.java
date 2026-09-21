@@ -45,6 +45,8 @@ public interface TeamRepository extends JpaRepository<Team, UUID> {
 
     List<Team> findByLead_Id(UUID leadId);
 
+    List<Team> findByNameIgnoreCase(String name);
+
     @Modifying(clearAutomatically = true)
     @Query(value = "DELETE FROM team_members WHERE user_id = :userId", nativeQuery = true)
     void removeFromAllTeams(@Param("userId") UUID userId);

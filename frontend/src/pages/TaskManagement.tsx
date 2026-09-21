@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { useTasks, useCreateTask, useUpdateTask, useUpdateTaskStatus, useDeleteTask } from '@/hooks/useTasks';
+import { useTasks, useCreateTask, useUpdateTask, useUpdateTaskStatus, useDeleteTask, useDeleteAllTasks } from '@/hooks/useTasks';
 import { useUsers, useDepartments } from '@/hooks/useUsers';
 import { useTeams, useTeam } from '@/hooks/useTeams';
 import { Task, TaskPriority, TaskStatus, User } from '@/types';
@@ -22,7 +22,7 @@ interface TaskFormState {
 const EMPTY_FORM: TaskFormState = {
   assignedToId: '',
   department: '',
-  deadline: '',
+  deadline: '',  // Will be set dynamically
   title: '',
   description: '',
   priority: TaskPriority.MEDIUM,
@@ -67,7 +67,11 @@ function formatDate(value?: string) {
 
 function formatDateKey(value?: string) {
   if (!value) return '';
-  return new Date(value).toISOString().split('T')[0];
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function priorityBadgeClass(priority: TaskPriority) {
@@ -118,29 +122,41 @@ function uniqueUsers(users: User[]) {
   });
 }
 
+// Helper to get today's date in YYYY-MM-DD format (local timezone)
+function getTodayDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function TaskManagement() {
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
   const isModerator = user?.role === 'MODERATOR' || user?.role === 'ADMIN';
 
-  const [form, setForm] = useState<TaskFormState>(EMPTY_FORM);
+  const [form, setForm] = useState<TaskFormState>({ ...EMPTY_FORM, deadline: getTodayDate() });
   const [filterEmployee, setFilterEmployee] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
-  const [filterDate, setFilterDate] = useState('');
+  const [filterDate, setFilterDate] = useState('');  // No default date filter — show all tasks
   const [filterStatus, setFilterStatus] = useState('');
-  const [filterPriority, setFilterPriority] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [remarkTaskId, setRemarkTaskId] = useState<string | null>(null);
   const [remarkText, setRemarkText] = useState('');
+  const [descriptionTaskId, setDescriptionTaskId] = useState<string | null>(null);
+  const [descriptionText, setDescriptionText] = useState('');
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
 
-  const { data: tasksPage, isLoading } = useTasks({ size: 200 });
+  const { data: tasksPage, isLoading } = useTasks({ size: 1000 });
   const { data: usersPage } = useUsers();
   const { data: departmentsList = [] } = useDepartments();
   const { data: teamsPage } = useTeams(0, 50);
 
   const createTask = useCreateTask();
   const deleteTask = useDeleteTask();
+  const deleteAllTasks = useDeleteAllTasks();
 
   const tasks = tasksPage?.content || [];
   const users = usersPage?.content || [];
@@ -170,10 +186,19 @@ export default function TaskManagement() {
   }, [assignableUsers, form.department]);
 
   useEffect(() => {
+    if (form.department && teams.length > 0) {
+      const match = teams.find(
+        (t) => t.name.toLowerCase() === form.department.toLowerCase()
+      );
+      if (match && form.teamId !== match.id) {
+        setForm((prev) => ({ ...prev, teamId: match.id }));
+      }
+      return;
+    }
     if (teams.length > 0 && !form.teamId) {
       setForm((prev) => ({ ...prev, teamId: teams[0].id }));
     }
-  }, [teams, form.teamId]);
+  }, [teams, form.teamId, form.department]);
 
   useEffect(() => {
     if (!(location.state as { openNewTask?: number } | null)?.openNewTask) return;
@@ -184,23 +209,22 @@ export default function TaskManagement() {
     return () => window.clearTimeout(timer);
   }, [location.state]);
 
-  const stats = useMemo(() => ({
-    pending: tasks.filter((t) => t.status === TaskStatus.TODO).length,
-    inProgress: tasks.filter((t) => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.IN_REVIEW).length,
-    completed: tasks.filter((t) => t.status === TaskStatus.DONE).length,
-    overdue: tasks.filter(isOverdue).length,
-  }), [tasks]);
-
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
       if (filterEmployee && task.assignedTo?.id !== filterEmployee) return false;
       if (filterDepartment && task.assignedTo?.department !== filterDepartment) return false;
       if (filterDate && formatDateKey(task.deadline) !== filterDate) return false;
       if (filterStatus && task.status !== filterStatus) return false;
-      if (filterPriority && task.priority !== filterPriority) return false;
       return true;
     });
-  }, [tasks, filterEmployee, filterDepartment, filterDate, filterStatus, filterPriority]);
+  }, [tasks, filterEmployee, filterDepartment, filterDate, filterStatus]);
+
+  const stats = useMemo(() => ({
+    pending: filteredTasks.filter((t) => t.status === TaskStatus.TODO).length,
+    inProgress: filteredTasks.filter((t) => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.IN_REVIEW).length,
+    completed: filteredTasks.filter((t) => t.status === TaskStatus.DONE).length,
+    overdue: filteredTasks.filter(isOverdue).length,
+  }), [filteredTasks]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -212,7 +236,7 @@ export default function TaskManagement() {
 
   useEffect(() => {
     setPage(1);
-  }, [filterEmployee, filterDepartment, filterDate, filterStatus, filterPriority, pageSize]);
+  }, [filterEmployee, filterDepartment, filterDate, filterStatus, pageSize]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -245,13 +269,16 @@ export default function TaskManagement() {
 
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    const teamId = form.teamId || teams[0]?.id;
+    const departmentTeam = form.department
+      ? teams.find((t) => t.name.toLowerCase() === form.department.toLowerCase())
+      : undefined;
+    const teamId = form.teamId || departmentTeam?.id || teams[0]?.id;
     if (!form.title.trim()) {
       toast.error('Task title is required');
       return;
     }
     if (!teamId) {
-      toast.error('Create a team first to add tasks');
+      toast.error('Select a department (each department is a team)');
       return;
     }
 
@@ -269,6 +296,7 @@ export default function TaskManagement() {
       setForm({
         ...EMPTY_FORM,
         teamId,
+        deadline: getTodayDate(),
         priority: TaskPriority.MEDIUM,
         status: TaskStatus.TODO,
       });
@@ -279,7 +307,12 @@ export default function TaskManagement() {
 
   const openRemark = (task: Task) => {
     setRemarkTaskId(task.id);
-    setRemarkText(task.remark || '');
+    setRemarkText(''); // Start with empty remark
+  };
+
+  const openDescription = (task: Task) => {
+    setDescriptionTaskId(task.id);
+    setDescriptionText(task.description || '');
   };
 
   return (
@@ -319,12 +352,24 @@ export default function TaskManagement() {
           </div>
         </div>
 
-        {/* Task Import Section */}
-        {teams.length > 0 && selectedTeamId && (
-          <section className="tms-panel">
-            <h2 className="tms-panel-title">Import Tasks</h2>
-            <TaskImport 
-              teamId={selectedTeamId} 
+        {/* Task Import — rows go to the department team from the sheet (ASE, UI, …) */}
+        <section className="tms-panel">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="tms-panel-title">Import Tasks</h2>
+              {isModerator && (
+                <button
+                  type="button"
+                  className="btn btn-danger text-sm flex items-center gap-1.5"
+                  onClick={() => setShowDeleteAllModal(true)}
+                  title="Delete all tasks in the system (Admin only)"
+                >
+                  <span className="material-symbols-outlined text-[14px] leading-none">delete_sweep</span>
+                  Delete All Tasks
+                </button>
+              )}
+            </div>
+            <TaskImport
+              teamId={selectedTeamId}
               onImportSuccess={(result) => {
                 toast.success(`Successfully imported ${result.successCount} task(s)!`);
                 if (result.failureCount > 0) {
@@ -334,20 +379,10 @@ export default function TaskManagement() {
                 setTimeout(() => window.location.reload(), 1500);
               }}
             />
-          </section>
-        )}
+        </section>
 
         <section id="new-task-form" className="tms-panel">
           <h2 className="tms-panel-title">Add New Task</h2>
-          {teams.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-charcoal-muted mb-4">You need at least one team before adding tasks.</p>
-              <Link to="/teams" className="btn btn-primary inline-flex items-center gap-2">
-                <span className="material-symbols-outlined text-[18px]">group_add</span>
-                Go to Teams
-              </Link>
-            </div>
-          ) : (
           <form onSubmit={handleAddTask} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="tms-label">Department</label>
@@ -386,21 +421,7 @@ export default function TaskManagement() {
                 onChange={(e) => handleFormChange('deadline', e.target.value)}
               />
             </div>
-            {teams.length > 1 && (
-              <div>
-                <label className="tms-label">Team</label>
-                <select
-                  className="input"
-                  value={form.teamId || selectedTeamId}
-                  onChange={(e) => handleFormChange('teamId', e.target.value)}
-                >
-                  {teams.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div className={teams.length > 1 ? '' : 'md:col-span-2'}>
+            <div className="md:col-span-2">
               <label className="tms-label">Task Title</label>
               <input
                 id="new-task-title"
@@ -451,7 +472,6 @@ export default function TaskManagement() {
               </button>
             </div>
           </form>
-          )}
         </section>
 
         <div className="flex flex-wrap gap-3">
@@ -489,12 +509,6 @@ export default function TaskManagement() {
               <option key={s} value={s}>{STATUS_LABELS[s]}</option>
             ))}
           </select>
-          <select className="input w-auto min-w-[140px]" value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)}>
-            <option value="">All Priorities</option>
-            {Object.values(TaskPriority).map((p) => (
-              <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
-            ))}
-          </select>
         </div>
 
         <section className="tms-panel tms-table-panel overflow-hidden p-0">
@@ -512,9 +526,7 @@ export default function TaskManagement() {
                     <th>Employee</th>
                     <th>Department</th>
                     <th>Task</th>
-                    <th>Description</th>
                     <th>Date</th>
-                    <th>Priority</th>
                     <th>Status</th>
                     <th>Remark</th>
                     <th className="text-right">Actions</th>
@@ -525,12 +537,14 @@ export default function TaskManagement() {
                     <TaskRow
                       key={task.id}
                       task={task}
+                      isModerator={isModerator}
                       onDelete={() => {
                         if (confirm(`Delete "${task.title}"? This cannot be undone.`)) {
                           deleteTask.mutate(task.id);
                         }
                       }}
                       onRemark={() => openRemark(task)}
+                      onEditDescription={() => openDescription(task)}
                     />
                   ))}
                 </tbody>
@@ -591,18 +605,44 @@ export default function TaskManagement() {
           onClose={() => setRemarkTaskId(null)}
         />
       )}
+
+      {descriptionTaskId && (
+        <DescriptionModal
+          taskId={descriptionTaskId}
+          value={descriptionText}
+          onChange={setDescriptionText}
+          onClose={() => setDescriptionTaskId(null)}
+        />
+      )}
+
+      {showDeleteAllModal && (
+        <DeleteAllTasksModal
+          isOpen={showDeleteAllModal}
+          isLoading={deleteAllTasks.isPending}
+          onConfirm={async () => {
+            await deleteAllTasks.mutateAsync();
+            setShowDeleteAllModal(false);
+            setTimeout(() => window.location.reload(), 1000);
+          }}
+          onClose={() => setShowDeleteAllModal(false)}
+        />
+      )}
     </div>
   );
 }
 
 function TaskRow({
   task,
+  isModerator,
   onDelete,
   onRemark,
+  onEditDescription,
 }: {
   task: Task;
+  isModerator: boolean;
   onDelete: () => void;
   onRemark: () => void;
+  onEditDescription: () => void;
 }) {
   const updateStatus = useUpdateTaskStatus(task.id);
   const overdue = isOverdue(task);
@@ -614,7 +654,7 @@ function TaskRow({
           <div className="avatar-sm bg-charcoal shrink-0">
             {task.assignedTo?.name?.charAt(0).toUpperCase() || '?'}
           </div>
-          <span className="text-body-md text-charcoal font-medium truncate max-w-[100px]">
+          <span className="text-body-md text-charcoal font-medium" title={task.assignedTo?.name || 'Unassigned'}>
             {task.assignedTo?.name || 'Unassigned'}
           </span>
         </div>
@@ -627,21 +667,31 @@ function TaskRow({
         )}
       </td>
       <td className="font-medium text-charcoal">{task.title}</td>
-      <td className="text-charcoal-muted max-w-[200px] truncate">{task.description || '—'}</td>
       <td className={overdue ? 'text-error font-medium' : 'text-charcoal-muted'}>
         {formatDate(task.deadline)}
-      </td>
-      <td>
-        <span className={priorityBadgeClass(task.priority)}>
-          {PRIORITY_LABELS[task.priority]}
-        </span>
       </td>
       <td>
         <span className={statusBadgeClass(task.status)}>
           {STATUS_LABELS[task.status]}
         </span>
       </td>
-      <td className="text-charcoal-muted max-w-[160px] truncate">{task.remark || '—'}</td>
+      <td>
+        <div className="flex items-center gap-2">
+          <span className="text-charcoal-muted max-w-[160px] truncate">
+            —
+          </span>
+          {isModerator && (
+            <button
+              type="button"
+              className="tms-action-btn tms-action-remark shrink-0"
+              title="Edit Remark (Admin Only)"
+              onClick={onRemark}
+            >
+              <span className="material-symbols-outlined text-[14px]">edit</span>
+            </button>
+          )}
+        </div>
+      </td>
       <td>
         <div className="flex justify-end gap-1">
           <button
@@ -659,14 +709,6 @@ function TaskRow({
             onClick={() => updateStatus.mutate({ status: TaskStatus.IN_PROGRESS })}
           >
             <span className="material-symbols-outlined text-[16px]">schedule</span>
-          </button>
-          <button
-            type="button"
-            className="tms-action-btn tms-action-remark"
-            title="Remark"
-            onClick={onRemark}
-          >
-            <span className="material-symbols-outlined text-[16px]">edit_note</span>
           </button>
           <button
             type="button"
@@ -707,7 +749,7 @@ function RemarkModal({
   return (
     <div className="modal-overlay">
       <div className="modal p-6 w-full max-w-md">
-        <h3 className="text-headline-sm text-charcoal mb-4">Add Remark</h3>
+        <h3 className="text-headline-sm text-charcoal mb-4">Edit Remark (Admin Only)</h3>
         <textarea
           className="input min-h-[100px] resize-y mb-4"
           placeholder="Enter remark..."
@@ -723,6 +765,98 @@ function RemarkModal({
             disabled={updateTask.isPending}
           >
             {updateTask.isPending ? 'Saving...' : 'Save Remark'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteAllTasksModal({
+  isOpen,
+  isLoading,
+  onConfirm,
+  onClose,
+}: {
+  isOpen: boolean;
+  isLoading: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal p-6 w-full max-w-md">
+        <h3 className="text-headline-sm text-charcoal mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-error text-[24px]">warning</span>
+          Delete All Tasks?
+        </h3>
+        <p className="text-body-md text-charcoal-muted mb-6">
+          This action will permanently delete ALL tasks in the system. This cannot be undone.
+        </p>
+        <div className="bg-error bg-opacity-10 border border-error border-opacity-20 rounded p-3 mb-6">
+          <p className="text-sm text-error font-medium">⚠️ Warning: This is a destructive action</p>
+        </div>
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onClose}
+            disabled={isLoading}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={onConfirm}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Deleting...' : 'Delete All Tasks'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function DescriptionModal({
+  taskId,
+  value,
+  onChange,
+  onClose,
+}: {
+  taskId: string;
+  value: string;
+  onChange: (v: string) => void;
+  onClose: () => void;
+}) {
+  const updateTask = useUpdateTask(taskId);
+
+  const handleSave = async () => {
+    await updateTask.mutateAsync({ description: value });
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal p-6 w-full max-w-md">
+        <h3 className="text-headline-sm text-charcoal mb-4">Edit Description (Admin Only)</h3>
+        <textarea
+          className="input min-h-[100px] resize-y mb-4"
+          placeholder="Enter description..."
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <div className="flex justify-end gap-3">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={updateTask.isPending}
+          >
+            {updateTask.isPending ? 'Saving...' : 'Save Description'}
           </button>
         </div>
       </div>

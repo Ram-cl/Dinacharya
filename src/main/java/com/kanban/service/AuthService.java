@@ -57,7 +57,7 @@ public class AuthService {
         User user = userMapper.fromRegisterRequest(request);
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setRole(UserRole.MEMBER);
+        user.setRole(UserRole.USER);
         user.setIsActive(true);
         user.setEmployeeStatus(com.kanban.model.enums.EmployeeStatus.ACTIVE);
         if (user.getEmploymentType() == null) {
@@ -83,11 +83,14 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
+        String email = request.getEmail() == null ? "" : request.getEmail().trim().toLowerCase();
+        request.setEmail(email);
+
         authenticationManager.authenticate(
-            new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+            new UsernamePasswordAuthenticationToken(email, request.getPassword())
         );
 
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmailIgnoreCase(email)
             .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         user.setLastActive(LocalDateTime.now());

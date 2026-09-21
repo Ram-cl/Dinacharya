@@ -1,8 +1,11 @@
 spring:
   datasource:
+    # TiDB Serverless requires TLS. Do not set DATABASE_URL / SPRING_DATASOURCE_URL
+    # without sslMode=VERIFY_IDENTITY or the pool will be rewritten anyway in prod.
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT:4000}/${DB_NAME:kanbandb}?sslMode=VERIFY_IDENTITY&enabledTLSProtocols=TLSv1.2,TLSv1.3&createDatabaseIfNotExist=true&serverTimezone=UTC&autoReconnect=true
     hikari:
-      maximum-pool-size: 20
-      minimum-idle: 10
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: ${DB_POOL_MIN:1}
 
   jpa:
     show-sql: false
@@ -15,10 +18,13 @@ logging:
     root: WARN
     com.kanban: INFO
     org.springframework.security: WARN
+<<<<<<< HEAD
   file:
     name: logs/kanban-backend.log
     max-size: 1GB
     max-history: 30
+=======
+>>>>>>> 0a4be12f87a5f9479b31935ae4c7bcb602b474d0
 
 management:
   endpoints:

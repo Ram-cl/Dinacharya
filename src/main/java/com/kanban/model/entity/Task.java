@@ -82,4 +82,25 @@ public class Task {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    /**
+     * Timestamp of when the task actually transitioned to DONE. Unlike {@link #updatedAt},
+     * this is not rewritten by unrelated edits, so it is a reliable completion date for
+     * performance analytics. It is maintained automatically by the JPA lifecycle callbacks
+     * below: set when the task becomes DONE and cleared when it moves out of DONE.
+     */
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
+    @PrePersist
+    @PreUpdate
+    private void reconcileCompletedAt() {
+        if (status == TaskStatus.DONE) {
+            if (completedAt == null) {
+                completedAt = LocalDateTime.now();
+            }
+        } else {
+            completedAt = null;
+        }
+    }
 }

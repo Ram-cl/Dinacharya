@@ -46,7 +46,7 @@ class UserServiceTest {
             .email("test@example.com")
             .password("hashedPassword")
             .name("Test User")
-            .role(UserRole.MEMBER)
+            .role(UserRole.USER)
             .isActive(true)
             .build();
 
@@ -54,7 +54,7 @@ class UserServiceTest {
             .id(testUserId)
             .email("test@example.com")
             .name("Test User")
-            .role(UserRole.MEMBER)
+            .role(UserRole.USER)
             .isActive(true)
             .build();
     }

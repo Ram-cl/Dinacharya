@@ -4,18 +4,15 @@ import { useAuthStore } from '@/store/authStore';
 import { useLogout } from '@/hooks/useAuth';
 import { isAdminUser } from '@/auth/roles';
 import Logo from '@/components/Logo';
-import { useAssignmentNotifications } from '@/hooks/useAssignmentNotifications';
-import { useMyTasks } from '@/hooks/useTasks';
-import { TaskStatus } from '@/types';
 
 const SIDEBAR_KEY = 'dinacharya-sidebar-open';
 
 const ADMIN_LINKS = [
   { to: '/tasks', label: 'Tasks', icon: 'assignment' },
+  { to: '/task-analytics', label: 'Task Analytics', icon: 'bar_chart' },
   { to: '/performance', label: 'Performance', icon: 'monitoring' },
   { to: '/moderator', label: 'Moderation', icon: 'shield' },
   { to: '/people', label: 'People', icon: 'badge' },
-  { to: '/teams', label: 'Teams', icon: 'group' },
   { to: '/profile', label: 'Profile', icon: 'person' },
 ] as const;
 
@@ -29,16 +26,6 @@ export default function Layout() {
   const user = useAuthStore((state) => state.user);
   const role = useAuthStore((state) => state.getUserRole());
   const admin = isAdminUser(user, role);
-  useAssignmentNotifications(admin ? undefined : user?.id);
-  const { data: myTasksPage } = useMyTasks(0, 100, !admin);
-  const assignedCount = admin
-    ? 0
-    : (myTasksPage?.content || []).filter(
-        (task) =>
-          task.assignedTo?.id === user?.id &&
-          task.createdBy?.id !== user?.id &&
-          task.status !== TaskStatus.DONE
-      ).length;
   const navigate = useNavigate();
   const location = useLocation();
   const logoutMutation = useLogout();
@@ -70,8 +57,8 @@ export default function Layout() {
   };
 
   const isActive = (path: string) => {
-    if (path === '/teams') return location.pathname.startsWith('/teams');
     if (path === '/performance') return location.pathname.startsWith('/performance');
+    if (path === '/task-analytics') return location.pathname === '/task-analytics';
     if (path.startsWith('/attendance')) return location.pathname.startsWith('/attendance');
     return location.pathname === path;
   };
@@ -168,28 +155,6 @@ export default function Layout() {
           </button>
 
           <div className="ml-auto flex items-center gap-1">
-            <button
-              type="button"
-              className="relative p-2 text-charcoal-muted hover:bg-sand transition-colors rounded-full"
-              aria-label="Notifications"
-              onClick={() => {
-                if (!admin) navigate('/work', { state: { focusAssigned: Date.now() } });
-              }}
-            >
-              <span className="material-symbols-outlined">notifications</span>
-              {assignedCount > 0 && (
-                <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-terracotta text-white text-[10px] font-semibold flex items-center justify-center">
-                  {assignedCount}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              className="p-2 text-charcoal-muted hover:bg-sand transition-colors rounded-full"
-              aria-label="Help"
-            >
-              <span className="material-symbols-outlined">help</span>
-            </button>
             <Link to="/profile" className="ml-1">
               <div className="avatar cursor-pointer bg-terracotta border-terracotta-dark">
                 {user?.name?.charAt(0).toUpperCase()}

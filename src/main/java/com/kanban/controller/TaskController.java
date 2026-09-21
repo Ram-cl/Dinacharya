@@ -22,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -133,5 +134,29 @@ public class TaskController {
         var user = userDetailsService.loadUserEntityByEmail(authentication.getName());
         taskService.deleteTask(id, user.getId());
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/all")
+    @Operation(summary = "Delete all tasks (Admin only) - requires explicit confirmation")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, Object>> deleteAllTasks(
+        @RequestParam(required = false) UUID teamId,
+        @RequestParam(defaultValue = "false") boolean confirm,
+        Authentication authentication
+    ) {
+        if (!confirm) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "Confirmation required",
+                "message", "Set confirm=true parameter to confirm deletion"
+            ));
+        }
+
+        var user = userDetailsService.loadUserEntityByEmail(authentication.getName());
+        int deletedCount = taskService.deleteAllTasks(teamId, user.getId());
+        
+        return ResponseEntity.ok(Map.of(
+            "message", "Tasks deleted successfully",
+            "deletedCount", deletedCount
+        ));
     }
 }

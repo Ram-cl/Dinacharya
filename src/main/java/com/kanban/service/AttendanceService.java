@@ -11,8 +11,10 @@ import com.kanban.model.entity.AttendanceRecord;
 import com.kanban.model.entity.User;
 import com.kanban.model.enums.AttendanceStatus;
 import com.kanban.repository.AttendanceRecordRepository;
+import com.kanban.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +25,9 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +36,7 @@ public class AttendanceService {
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("hh:mm a");
 
     private final AttendanceRecordRepository attendanceRecordRepository;
+    private final UserRepository userRepository;
     private final UserService userService;
 
     @Transactional(readOnly = true)
@@ -43,10 +48,61 @@ public class AttendanceService {
         Pageable pageable
     ) {
         LocalDate date = workDate != null ? workDate : LocalDate.now();
-        String searchTerm = (search == null || search.isBlank()) ? null : search.trim();
+        String searchTerm = (search == null || search.isBlank()) ? null : search.trim().toLowerCase();
         String departmentTerm = (department == null || department.isBlank()) ? null : department.trim();
-        return attendanceRecordRepository.findByFilters(date, departmentTerm, status, searchTerm, pageable)
-            .map(this::toResponse);
+
+        List<User> employees = userRepository.findActiveEmployees(departmentTerm);
+        Map<UUID, AttendanceRecord> recordsByUser = attendanceRecordRepository.findByWorkDate(date).stream()
+            .collect(Collectors.toMap(record -> record.getUser().getId(), record -> record, (a, b) -> a));
+
+        List<AttendanceRecordResponse> roster = employees.stream()
+            .filter(user -> matchesSearch(user, searchTerm))
+            .map(user -> {
+                AttendanceRecord record = recordsByUser.get(user.getId());
+                return record != null ? toResponse(record) : placeholderFor(user, date);
+            })
+            .filter(response -> status == null || response.getStatus() == status)
+            .toList();
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), roster.size());
+        List<AttendanceRecordResponse> pageContent = start >= roster.size() ? List.of() : roster.subList(start, end);
+        return new PageImpl<>(pageContent, pageable, roster.size());
+    }
+
+    private boolean matchesSearch(User user, String searchTerm) {
+        if (searchTerm == null) {
+            return true;
+        }
+        String haystack = String.join(" ",
+            nullToEmpty(user.getName()),
+            nullToEmpty(user.getEmail()),
+            nullToEmpty(user.getDepartment()),
+            nullToEmpty(user.getProfessionalRole())
+        ).toLowerCase();
+        return haystack.contains(searchTerm);
+    }
+
+    private AttendanceRecordResponse placeholderFor(User user, LocalDate workDate) {
+        int weeklyAvg = calculateWeeklyAvgMinutes(user.getId(), workDate);
+        return AttendanceRecordResponse.builder()
+            .userId(user.getId())
+            .memberName(user.getName())
+            .memberEmail(user.getEmail())
+            .department(user.getDepartment())
+            .profilePicture(user.getProfilePicture())
+            .workDate(workDate)
+            .status(AttendanceStatus.ABSENT)
+            .hoursToday("00:00")
+            .hoursTodayMinutes(0)
+            .weeklyAvgHours(formatWeeklyHours(weeklyAvg))
+            .weeklyAvgMinutes(weeklyAvg)
+            .breaks(List.of())
+            .build();
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     @Transactional
@@ -96,7 +152,7 @@ public class AttendanceService {
             record.setExitTime(request.getExitTime());
         }
         if (request.getStatus() != null) {
-            record.setStatus(request.getStatus());
+            record.setStatus(toStoredStatus(request.getStatus(), record.getEntryTime()));
         } else {
             record.setStatus(resolveStatus(null, record.getEntryTime(), record.getExitTime(), null, record));
         }
@@ -113,9 +169,7 @@ public class AttendanceService {
                     record.getBreaks().add(attendanceBreak);
                 }
             }
-            if (hasActiveBreak(record)) {
-                record.setStatus(AttendanceStatus.ON_BREAK);
-            }
+            record.setStatus(toStoredStatus(record.getStatus(), record.getEntryTime()));
         }
 
         record = attendanceRecordRepository.save(record);
@@ -140,13 +194,7 @@ public class AttendanceService {
         List<AttendanceBreakRequest> breaks
     ) {
         if (requested != null) {
-            return requested;
-        }
-        if (exitTime != null) {
-            return AttendanceStatus.OFFLINE;
-        }
-        if (breaks != null && breaks.stream().anyMatch(b -> b.getStartTime() != null && b.getEndTime() == null)) {
-            return AttendanceStatus.ON_BREAK;
+            return toStoredStatus(requested, entryTime);
         }
         if (entryTime != null) {
             return AttendanceStatus.ONLINE;
@@ -162,13 +210,7 @@ public class AttendanceService {
         AttendanceRecord record
     ) {
         if (requested != null) {
-            return requested;
-        }
-        if (exitTime != null) {
-            return AttendanceStatus.OFFLINE;
-        }
-        if (hasActiveBreak(record)) {
-            return AttendanceStatus.ON_BREAK;
+            return toStoredStatus(requested, entryTime);
         }
         if (entryTime != null) {
             return AttendanceStatus.ONLINE;
@@ -176,9 +218,27 @@ public class AttendanceService {
         return AttendanceStatus.OFFLINE;
     }
 
-    private boolean hasActiveBreak(AttendanceRecord record) {
-        return record.getBreaks().stream()
-            .anyMatch(b -> b.getEndTime() == null);
+    private AttendanceStatus toStoredStatus(AttendanceStatus status, LocalDateTime entryTime) {
+        return toTeamStatus(status, entryTime) == AttendanceStatus.PRESENT
+            ? AttendanceStatus.ONLINE
+            : AttendanceStatus.OFFLINE;
+    }
+
+    private AttendanceStatus toTeamStatus(AttendanceStatus status, LocalDateTime entryTime) {
+        if (status == AttendanceStatus.PRESENT
+            || status == AttendanceStatus.ONLINE
+            || status == AttendanceStatus.ON_BREAK
+            || status == AttendanceStatus.WORK_FROM_HOME
+            || status == AttendanceStatus.HALF_DAY) {
+            return AttendanceStatus.PRESENT;
+        }
+        if (status == AttendanceStatus.ABSENT
+            || status == AttendanceStatus.LEAVE
+            || status == AttendanceStatus.OFFLINE
+            || status == AttendanceStatus.AWAY) {
+            return AttendanceStatus.ABSENT;
+        }
+        return entryTime != null ? AttendanceStatus.PRESENT : AttendanceStatus.ABSENT;
     }
 
     private AttendanceRecordResponse toResponse(AttendanceRecord record) {
@@ -200,7 +260,7 @@ public class AttendanceService {
             .workDate(record.getWorkDate())
             .entryTime(record.getEntryTime())
             .exitTime(record.getExitTime())
-            .status(record.getStatus())
+            .status(toTeamStatus(record.getStatus(), record.getEntryTime()))
             .hoursToday(formatDuration(hoursTodayMinutes))
             .hoursTodayMinutes(hoursTodayMinutes)
             .weeklyAvgHours(formatWeeklyHours(weeklyAvgMinutes))

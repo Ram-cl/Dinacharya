@@ -20,7 +20,7 @@ import java.util.UUID;
 @RequestMapping("/analytics/performance")
 @RequiredArgsConstructor
 @SecurityRequirement(name = "bearerAuth")
-@PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+@PreAuthorize("hasRole('ADMIN')")
 @Tag(name = "Performance Analytics", description = "Employee performance analytics (admin only)")
 public class PerformanceAnalyticsController {
 

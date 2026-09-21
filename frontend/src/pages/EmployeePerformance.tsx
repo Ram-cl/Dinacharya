@@ -5,40 +5,36 @@ import {
   BarChart,
   CartesianGrid,
   Legend,
-  Line,
-  LineChart,
   ResponsiveContainer,
-  Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
-  ZAxis,
 } from 'recharts';
 import { useDepartments } from '@/hooks/useUsers';
 import {
   useEmployeePerformance,
-  useEmployeePerformanceTrend,
   useRecomputePerformance,
 } from '@/hooks/usePerformanceAnalytics';
 
-function formatMonthLabel(value: string) {
-  const date = new Date(value);
-  return date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+function toLocalIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function currentMonthRange() {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const toIso = (date: Date) => date.toISOString().slice(0, 10);
-  return { from: toIso(start), to: toIso(now) };
+  // Use last 60 days so imported historical data is always in range
+  const start = new Date(now);
+  start.setDate(start.getDate() - 60);
+  return { from: toLocalIsoDate(start), to: toLocalIsoDate(now) };
 }
 
 export default function EmployeePerformancePage() {
   const navigate = useNavigate();
   const defaultRange = useMemo(() => currentMonthRange(), []);
   const [department, setDepartment] = useState('');
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
 
   const { data: departments } = useDepartments();
   const { data: overview, isLoading } = useEmployeePerformance(
@@ -49,8 +45,6 @@ export default function EmployeePerformancePage() {
   const recompute = useRecomputePerformance();
 
   const employees = overview?.employees ?? [];
-  const activeUserId = selectedUserId || employees[0]?.userId;
-  const { data: trend } = useEmployeePerformanceTrend(activeUserId);
 
   const summary = useMemo(() => {
     if (!employees.length) {
@@ -85,24 +79,6 @@ export default function EmployeePerformancePage() {
         })),
     [employees]
   );
-
-  const scatterData = employees.map((employee) => ({
-    userId: employee.userId,
-    name: employee.userName,
-    x: employee.productivityScore,
-    y: employee.disciplineScore,
-    z: employee.performanceIndex,
-  }));
-
-  const trendData =
-    trend?.points.map((point) => ({
-      label: formatMonthLabel(point.periodStart),
-      performanceIndex: point.performanceIndex,
-      rollingIndex: point.rollingIndex ?? point.performanceIndex,
-      productivityScore: point.productivityScore,
-      efficiencyScore: point.efficiencyScore,
-      disciplineScore: point.disciplineScore,
-    })) ?? [];
 
   if (isLoading && !overview) {
     return (
@@ -196,83 +172,6 @@ export default function EmployeePerformancePage() {
                 />
               </BarChart>
             </ResponsiveContainer>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <div className="card">
-              <h2 className="text-lg font-semibold text-charcoal mb-4">Productivity vs Task Completion</h2>
-              <ResponsiveContainer width="100%" height={300}>
-                <ScatterChart>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E8E4DC" />
-                  <XAxis
-                    type="number"
-                    dataKey="x"
-                    name="Productivity"
-                    domain={[0, 100]}
-                    tick={{ fill: '#5C5E58' }}
-                  />
-                  <YAxis
-                    type="number"
-                    dataKey="y"
-                    name="Task Completion"
-                    domain={[0, 100]}
-                    tick={{ fill: '#5C5E58' }}
-                  />
-                  <ZAxis type="number" dataKey="z" range={[80, 400]} />
-                  <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                  <Scatter
-                    data={scatterData}
-                    fill="#6B8F71"
-                    name="Employees"
-                    onClick={(data) => {
-                      const payload = data as { userId?: string } | undefined;
-                      if (payload?.userId) navigate(`/performance/${payload.userId}`);
-                    }}
-                  />
-                </ScatterChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="card">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <h2 className="text-lg font-semibold text-charcoal">Trend</h2>
-                <select
-                  className="input-field min-w-[200px]"
-                  value={activeUserId}
-                  onChange={(event) => setSelectedUserId(event.target.value)}
-                >
-                  {employees.map((employee) => (
-                    <option key={employee.userId} value={employee.userId}>
-                      {employee.userName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E8E4DC" />
-                  <XAxis dataKey="label" tick={{ fill: '#5C5E58' }} />
-                  <YAxis domain={[0, 100]} tick={{ fill: '#5C5E58' }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="performanceIndex"
-                    stroke="#C57A44"
-                    name="Performance Index"
-                    strokeWidth={2}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="rollingIndex"
-                    stroke="#5C7A99"
-                    name="3-month rolling"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
           </div>
 
           <div className="card overflow-x-auto">

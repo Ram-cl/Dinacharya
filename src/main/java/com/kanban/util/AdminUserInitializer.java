@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -20,6 +21,7 @@ import java.time.LocalDateTime;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@Order(10)
 public class AdminUserInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;
@@ -46,7 +48,7 @@ public class AdminUserInitializer implements CommandLineRunner {
             return;
         }
 
-        if (userRepository.findByEmail(adminEmail).isEmpty()) {
+        if (userRepository.findByEmailIgnoreCase(adminEmail).isEmpty()) {
             log.info("Creating default admin user for {}", adminEmail);
 
             User admin = User.builder()

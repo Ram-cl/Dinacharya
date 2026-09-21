@@ -213,7 +213,6 @@ export default function EmployeeDashboard() {
           </div>
           <p className="text-charcoal-muted">
             Use <strong>New Task</strong> in the sidebar or <strong>Log a task</strong> to add what you worked on today.
-            {teams.length === 0 ? ' You can log tasks even before an admin adds you to a team.' : ''}
           </p>
         </section>
 
@@ -382,7 +381,7 @@ function TaskList({
               <tr>
                 <th>Task</th>
                 {showAssigner && <th>Assigned by</th>}
-                <th>Team</th>
+                <th>Department</th>
                 <th>Date</th>
                 <th>Priority</th>
                 <th>Status</th>
@@ -396,7 +395,7 @@ function TaskList({
                     <p className="text-sm text-charcoal-muted truncate max-w-xs">{task.description || '—'}</p>
                   </td>
                   {showAssigner && <td>{task.createdBy?.name || 'Admin'}</td>}
-                  <td>{task.teamName}</td>
+                  <td>{task.assignedTo?.department || '—'}</td>
                   <td>{formatDate(task.deadline || task.createdAt)}</td>
                   <td><span className={priorityBadgeClass(task.priority)}>{PRIORITY_LABELS[task.priority]}</span></td>
                   <td>

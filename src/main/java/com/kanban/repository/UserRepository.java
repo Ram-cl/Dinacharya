@@ -21,6 +21,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByEmailIgnoreCase(String email);
 
+    Optional<User> findByNameIgnoreCase(String name);
+
+    @Query("SELECT u FROM User u WHERE LOWER(u.name) LIKE LOWER(CONCAT('%', :name, '%'))")
+    List<User> searchByNameContaining(@Param("name") String name);
+
     Page<User> findByRole(UserRole role, Pageable pageable);
 
     @Query("""
@@ -59,11 +64,14 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     int clearDepartment(@Param("department") String department);
 
     @Query("""
-        SELECT u FROM User u
+        SELECT DISTINCT u FROM User u
         WHERE u.isActive = true
-        AND u.role IN ('MEMBER', 'TEAM_LEAD')
+        AND u.role = 'USER'
         AND (:department IS NULL OR u.department = :department)
         ORDER BY u.name ASC
         """)
     List<User> findActiveEmployees(@Param("department") String department);
+
+    @Query("SELECT DISTINCT u FROM User u ORDER BY u.createdAt DESC")
+    List<User> findAllDistinct();
 }

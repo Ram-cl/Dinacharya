@@ -8,6 +8,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -71,6 +72,14 @@ public class User {
     @Column
     private LocalDateTime lastActive;
 
+    /**
+     * The date the employee officially joined. Used as the effective start of all
+     * attendance and performance calculations so metrics aren't inflated by days
+     * before they were onboarded. Defaults to DATE(created_at) via a startup backfill.
+     */
+    @Column(name = "joining_date")
+    private LocalDate joiningDate;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -87,4 +96,13 @@ public class User {
 
     @OneToMany(mappedBy = "uploadedBy", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private Set<Attachment> attachments = new HashSet<>();
+
+    @Column(name = "admin_request_pending")
+    private Boolean adminRequestPending = false;
+
+    @Column(name = "admin_request_date")
+    private LocalDateTime adminRequestDate;
+
+    @Column(name = "admin_request_reason", columnDefinition = "TEXT")
+    private String adminRequestReason;
 }

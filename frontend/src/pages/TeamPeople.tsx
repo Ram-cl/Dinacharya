@@ -25,6 +25,7 @@ const EMPTY_FORM = {
   email: '',
   githubProfile: '',
   department: DEFAULT_DEPARTMENT,
+  joiningDate: new Date().toISOString().slice(0, 10),
 };
 
 function statusOf(user: User): EmployeeStatus {
@@ -79,6 +80,7 @@ export default function TeamPeople() {
     email: '',
     githubProfile: '',
     employeeStatus: EmployeeStatus.ACTIVE,
+    joiningDate: '',
   });
 
   const employees = useMemo(
@@ -109,6 +111,7 @@ export default function TeamPeople() {
       email: person.email,
       githubProfile: githubUsername(person.githubProfile),
       employeeStatus: statusOf(person),
+      joiningDate: person.joiningDate || '',
     });
   };
 
@@ -129,6 +132,7 @@ export default function TeamPeople() {
           email: draft.email.trim(),
           githubProfile: draft.githubProfile.trim(),
           employeeStatus: draft.employeeStatus,
+          joiningDate: draft.joiningDate || undefined,
         },
       });
       setEditingId(null);
@@ -151,6 +155,7 @@ export default function TeamPeople() {
         professionalRole: form.professionalRole.trim() || undefined,
         githubProfile: form.githubProfile.trim() || undefined,
         department: form.department.trim(),
+        joiningDate: form.joiningDate || undefined,
       });
       setForm({ ...EMPTY_FORM, department: form.department });
     } catch {
@@ -235,6 +240,15 @@ export default function TeamPeople() {
                       <option key={dept} value={dept}>{dept}</option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label className="tms-label">Joining Date</label>
+                  <input
+                    className="input"
+                    type="date"
+                    value={form.joiningDate}
+                    onChange={(e) => setForm((prev) => ({ ...prev, joiningDate: e.target.value }))}
+                  />
                 </div>
                 <button type="submit" className="dir-enroll-btn" disabled={enroll.isPending}>
                   {enroll.isPending ? 'Enrolling…' : '+ Enroll Member'}
@@ -349,24 +363,40 @@ export default function TeamPeople() {
                           </td>
                           <td>
                             {editing ? (
-                              <select
-                                className="input py-1 px-2 text-sm min-w-[140px]"
-                                value={draft.employeeStatus}
-                                onChange={(e) =>
-                                  setDraft((prev) => ({
-                                    ...prev,
-                                    employeeStatus: e.target.value as EmployeeStatus,
-                                  }))
-                                }
-                              >
-                                {STATUS_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
+                              <div className="flex flex-col gap-2">
+                                <select
+                                  className="input py-1 px-2 text-sm min-w-[140px]"
+                                  value={draft.employeeStatus}
+                                  onChange={(e) =>
+                                    setDraft((prev) => ({
+                                      ...prev,
+                                      employeeStatus: e.target.value as EmployeeStatus,
+                                    }))
+                                  }
+                                >
+                                  {STATUS_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  className="input py-1 px-2 text-sm"
+                                  type="date"
+                                  title="Joining date"
+                                  value={draft.joiningDate}
+                                  onChange={(e) => setDraft((prev) => ({ ...prev, joiningDate: e.target.value }))}
+                                />
+                              </div>
                             ) : (
-                              <span className={statusClass(status)}>{status}</span>
+                              <div className="flex flex-col gap-1">
+                                <span className={statusClass(status)}>{status}</span>
+                                {person.joiningDate && (
+                                  <span className="text-xs text-charcoal-muted">
+                                    Joined {new Date(person.joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </td>
                           <td>

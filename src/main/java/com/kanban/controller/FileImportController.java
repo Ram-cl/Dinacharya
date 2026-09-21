@@ -23,7 +23,7 @@ import java.util.UUID;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/v1/import")
+@RequestMapping("/import")
 @RequiredArgsConstructor
 @Tag(name = "File Import", description = "Endpoints for importing tasks from Excel and Word files")
 @SecurityRequirement(name = "bearerAuth")
@@ -32,28 +32,22 @@ public class FileImportController {
     private final FileImportService fileImportService;
     private final com.kanban.security.CustomUserDetailsService userDetailsService;
 
-    @PostMapping(value = "/tasks/excel/{teamId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR', 'USER')")
-    @Operation(
-            summary = "Import tasks from Excel file",
-            description = "Upload an Excel (.xlsx) file to import multiple tasks at once. " +
-                    "Expected columns: Title, Description, Status, Priority, Due Date, Assignee Email, Team Name",
-            responses = {
-                    @ApiResponse(
-                            responseCode = "200",
-                            description = "Tasks imported successfully",
-                            content = @Content(schema = @Schema(implementation = TaskImportResponse.class))
-                    ),
-                    @ApiResponse(responseCode = "400", description = "Invalid file format"),
-                    @ApiResponse(responseCode = "404", description = "Team not found"),
-                    @ApiResponse(responseCode = "401", description = "Unauthorized")
-            }
-    )
+    @PostMapping("/tasks/excel")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
+    @Operation(summary = "Import tasks from Excel (department teams from the sheet)")
     public ResponseEntity<TaskImportResponse> importFromExcel(
+            @RequestParam("file") MultipartFile file,
+            org.springframework.security.core.Authentication authentication) {
+        return importFromExcelForTeam(file, null, authentication);
+    }
+
+    @PostMapping("/tasks/excel/{teamId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
+    @Operation(summary = "Import tasks from Excel file into a specific team")
+    public ResponseEntity<TaskImportResponse> importFromExcelForTeam(
             @Parameter(description = "Excel file containing tasks", required = true)
             @RequestParam("file") MultipartFile file,
-            @Parameter(description = "Team ID to import tasks to", required = true)
-            @PathVariable UUID teamId,
+            @PathVariable(required = false) UUID teamId,
             org.springframework.security.core.Authentication authentication) {
 
         log.info("Received Excel import request for team: {}, file: {}", teamId, file.getOriginalFilename());
@@ -101,8 +95,89 @@ public class FileImportController {
         }
     }
 
-    @PostMapping(value = "/tasks/word/{teamId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR', 'USER')")
+    @PostMapping("/tasks/attendance")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
+    @Operation(summary = "Import a daily attendance/tasksheet workbook")
+    public ResponseEntity<TaskImportResponse> importFromAttendanceSheet(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "importDate", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate importDate,
+            org.springframework.security.core.Authentication authentication) {
+        return importFromAttendanceSheetForTeam(file, null, importDate, authentication);
+    }
+
+    @PostMapping("/tasks/attendance/{teamId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
+    @Operation(
+            summary = "Import tasks from a daily attendance/tasksheet workbook",
+            description = "Upload a multi-sheet Excel (.xlsx) attendance tasksheet. Each sheet is scanned for a header " +
+                    "row and columns are mapped by name (Date, Attendance, Login, Logout, Hours, Task/Description, Status). " +
+                    "The employee is resolved from a Name column, a 'Name:' label, or the sheet tab name. " +
+                    "Pass importDate (YYYY-MM-DD) to import only rows matching that date.",
+            responses = {
+                    @ApiResponse(
+                            responseCode = "200",
+                            description = "Tasks imported successfully",
+                            content = @Content(schema = @Schema(implementation = TaskImportResponse.class))
+                    ),
+                    @ApiResponse(responseCode = "400", description = "Invalid file format"),
+                    @ApiResponse(responseCode = "404", description = "Team not found"),
+                    @ApiResponse(responseCode = "401", description = "Unauthorized")
+            }
+    )
+    public ResponseEntity<TaskImportResponse> importFromAttendanceSheetForTeam(
+            @Parameter(description = "Attendance tasksheet Excel file", required = true)
+            @RequestParam("file") MultipartFile file,
+            @PathVariable(required = false) UUID teamId,
+            @RequestParam(value = "importDate", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate importDate,
+            org.springframework.security.core.Authentication authentication) {
+
+        log.info("Received attendance import request for team: {}, file: {}, importDate: {}", teamId, file.getOriginalFilename(), importDate);
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(
+                    TaskImportResponse.builder()
+                            .message("File is empty")
+                            .totalRows(0).successCount(0).failureCount(0)
+                            .build()
+            );
+        }
+
+        String filename = file.getOriginalFilename();
+        if (filename == null || !filename.toLowerCase().endsWith(".xlsx")) {
+            return ResponseEntity.badRequest().body(
+                    TaskImportResponse.builder()
+                            .message("Invalid file type. Only .xlsx files are supported")
+                            .totalRows(0).successCount(0).failureCount(0)
+                            .build()
+            );
+        }
+
+        try {
+            var user = userDetailsService.loadUserEntityByEmail(authentication.getName());
+            TaskImportResponse response = fileImportService.importAttendanceSheet(file, teamId, user.getId(), importDate);
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            log.error("Error processing attendance file: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    TaskImportResponse.builder()
+                            .message("Error processing file: " + e.getMessage())
+                            .totalRows(0).successCount(0).failureCount(0)
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/tasks/word")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
+    @Operation(summary = "Import tasks from Word")
+    public ResponseEntity<TaskImportResponse> importFromWord(
+            @RequestParam("file") MultipartFile file,
+            org.springframework.security.core.Authentication authentication) {
+        return importFromWordForTeam(file, null, authentication);
+    }
+
+    @PostMapping("/tasks/word/{teamId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
     @Operation(
             summary = "Import tasks from Word file",
             description = "Upload a Word (.docx) file to import multiple tasks at once. " +
@@ -119,11 +194,10 @@ public class FileImportController {
                     @ApiResponse(responseCode = "401", description = "Unauthorized")
             }
     )
-    public ResponseEntity<TaskImportResponse> importFromWord(
+    public ResponseEntity<TaskImportResponse> importFromWordForTeam(
             @Parameter(description = "Word file containing tasks", required = true)
             @RequestParam("file") MultipartFile file,
-            @Parameter(description = "Team ID to import tasks to", required = true)
-            @PathVariable UUID teamId,
+            @PathVariable(required = false) UUID teamId,
             org.springframework.security.core.Authentication authentication) {
 
         log.info("Received Word import request for team: {}, file: {}", teamId, file.getOriginalFilename());

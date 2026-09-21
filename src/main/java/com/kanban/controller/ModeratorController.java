@@ -35,8 +35,8 @@ import java.util.UUID;
 @RequestMapping("/moderator")
 @RequiredArgsConstructor
 @SecurityRequirement(name = "bearerAuth")
-@PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
-@Tag(name = "Moderator", description = "Moderation APIs (moderator/admin only)")
+@PreAuthorize("hasRole('ADMIN')")
+@Tag(name = "Moderator", description = "Admin APIs (admin only)")
 public class ModeratorController {
 
     private final CommentService commentService;

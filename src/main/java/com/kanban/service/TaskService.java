@@ -14,7 +14,6 @@ import com.kanban.model.enums.TaskPriority;
 import com.kanban.model.enums.TaskStatus;
 import com.kanban.model.enums.UserRole;
 import com.kanban.repository.TaskRepository;
-import com.kanban.websocket.WebSocketEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -39,7 +38,6 @@ public class TaskService {
     private final UserService userService;
     private final TeamService teamService;
     private final AuditService auditService;
-    private final WebSocketEventPublisher webSocketEventPublisher;
     private final EmailService emailService;
 
     @Transactional(readOnly = true)
@@ -65,7 +63,7 @@ public class TaskService {
                 .map(taskMapper::toResponse);
         }
 
-        if (currentUser.getRole() == UserRole.ADMIN || currentUser.getRole() == UserRole.MODERATOR) {
+        if (currentUser.getRole() == UserRole.ADMIN) {
             return taskRepository.findAllTasksByFilters(status, priority, assignedToId, pageable)
                 .map(taskMapper::toResponse);
         }
@@ -93,13 +91,18 @@ public class TaskService {
 
     @Transactional
     public TaskResponse createTask(CreateTaskRequest request, UUID createdById) {
+        return createTask(request, createdById, true);
+    }
+
+    @Transactional
+    public TaskResponse createTask(CreateTaskRequest request, UUID createdById, boolean notifyAssignee) {
         User createdBy = userService.getUserEntityById(createdById);
-        boolean privileged = createdBy.getRole() == UserRole.ADMIN || createdBy.getRole() == UserRole.MODERATOR;
+        boolean isAdmin = createdBy.getRole() == UserRole.ADMIN;
         Team team;
 
         if (request.getTeamId() != null) {
             team = teamService.getTeamEntityById(request.getTeamId());
-            if (!teamService.isMember(team, createdBy) && !privileged) {
+            if (!teamService.isMember(team, createdBy) && !isAdmin) {
                 teamService.ensureMember(team, createdBy);
             }
         } else {
@@ -113,12 +116,12 @@ public class TaskService {
 
         if (request.getAssignedToId() != null) {
             User assignee = userService.getUserEntityById(request.getAssignedToId());
-            if (!teamService.isMember(team, assignee) && !privileged && !assignee.getId().equals(createdById)) {
+            if (!teamService.isMember(team, assignee) && !isAdmin && !assignee.getId().equals(createdById)) {
                 throw new UnauthorizedException("You can only assign daily tasks to yourself");
             }
             teamService.ensureMember(team, assignee);
             task.setAssignedTo(assignee);
-        } else if (!privileged) {
+        } else if (!isAdmin) {
             teamService.ensureMember(team, createdBy);
             task.setAssignedTo(createdBy);
         }
@@ -126,12 +129,11 @@ public class TaskService {
         task = taskRepository.save(task);
         auditService.logTaskCreated(createdById, task.getId(), task.getTitle());
 
-        TaskResponse response = taskMapper.toResponse(task);
-        webSocketEventPublisher.publishTaskCreated(team.getId(), response);
-        webSocketEventPublisher.publishTaskAssigned(response);
-        notifyAssigneeAfterCommit(task);
+        if (notifyAssignee) {
+            notifyAssigneeAfterCommit(task);
+        }
 
-        return response;
+        return taskMapper.toResponse(task);
     }
 
     @Transactional
@@ -172,14 +174,11 @@ public class TaskService {
 
         auditService.logTaskUpdated(currentUserId, task.getId(), changes);
 
-        TaskResponse response = taskMapper.toResponse(task);
-        webSocketEventPublisher.publishTaskUpdated(task.getTeam().getId(), response);
         if (request.getAssignedToId() != null && !request.getAssignedToId().equals(previousAssigneeId)) {
-            webSocketEventPublisher.publishTaskAssigned(response);
             notifyAssigneeAfterCommit(task);
         }
 
-        return response;
+        return taskMapper.toResponse(task);
     }
 
     @Transactional
@@ -190,9 +189,8 @@ public class TaskService {
         User currentUser = userService.getUserEntityById(currentUserId);
         boolean isCreator = task.getCreatedBy().getId().equals(currentUserId);
         boolean isAssignee = task.getAssignedTo() != null && task.getAssignedTo().getId().equals(currentUserId);
-        boolean isTeamLead = task.getTeam().getLead().getId().equals(currentUserId);
-        boolean isModerator = currentUser.getRole() == UserRole.MODERATOR || currentUser.getRole() == UserRole.ADMIN;
-        if (!isCreator && !isAssignee && !isTeamLead && !isModerator) {
+        boolean isAdmin = currentUser.getRole() == UserRole.ADMIN;
+        if (!isCreator && !isAssignee && !isAdmin) {
             throw new UnauthorizedException("You don't have permission to update this task status");
         }
 
@@ -207,10 +205,7 @@ public class TaskService {
 
         auditService.logTaskStatusChanged(currentUserId, task.getId(), oldStatus.name(), newStatus.name());
 
-        TaskResponse response = taskMapper.toResponse(task);
-        webSocketEventPublisher.publishTaskUpdated(task.getTeam().getId(), response);
-
-        return response;
+        return taskMapper.toResponse(task);
     }
 
     @Transactional
@@ -231,13 +226,9 @@ public class TaskService {
         }
 
         auditService.logTaskAssigned(currentUserId, task.getId(), assigneeId);
-
-        TaskResponse response = taskMapper.toResponse(task);
-        webSocketEventPublisher.publishTaskUpdated(task.getTeam().getId(), response);
-        webSocketEventPublisher.publishTaskAssigned(response);
         notifyAssigneeAfterCommit(task);
 
-        return response;
+        return taskMapper.toResponse(task);
     }
 
     @Transactional
@@ -262,18 +253,63 @@ public class TaskService {
 
         taskRepository.delete(task);
         auditService.logTaskDeleted(currentUserId, id, taskTitle);
+    }
 
-        webSocketEventPublisher.publishTaskDeleted(teamId, id);
+    @Transactional
+    public int deleteAllTasks(UUID teamId, UUID currentUserId) {
+        User currentUser = userService.getUserEntityById(currentUserId);
+
+        // Only ADMIN role can delete all tasks
+        if (currentUser.getRole() != UserRole.ADMIN) {
+            throw new UnauthorizedException("Only admins can delete all tasks");
+        }
+
+        int deletedCount = 0;
+        if (teamId != null) {
+            // Delete all tasks in a specific team
+            java.util.List<Task> tasks = taskRepository.findByTeamId(teamId);
+            deletedCount = tasks.size();
+            for (Task task : tasks) {
+                clearTaskRelations(task);
+            }
+            taskRepository.deleteAll(tasks);
+            auditService.logAction(currentUserId, com.kanban.model.enums.AuditAction.DELETE, "Task", teamId, 
+                java.util.Map.of("event", "delete_all_in_team", "count", deletedCount));
+        } else {
+            // Delete ALL tasks in the system
+            java.util.List<Task> allTasks = taskRepository.findAll();
+            deletedCount = allTasks.size();
+            java.util.Set<UUID> affectedTeams = new java.util.HashSet<>();
+            for (Task task : allTasks) {
+                clearTaskRelations(task);
+                affectedTeams.add(task.getTeam().getId());
+            }
+            taskRepository.deleteAll(allTasks);
+            auditService.logAction(currentUserId, com.kanban.model.enums.AuditAction.DELETE, "Task", currentUserId, 
+                java.util.Map.of("event", "delete_all_system", "count", deletedCount));
+        }
+        return deletedCount;
+    }
+
+    private void clearTaskRelations(Task task) {
+        if (task.getComments() != null) {
+            task.getComments().clear();
+        }
+        if (task.getAttachments() != null) {
+            task.getAttachments().clear();
+        }
+        if (task.getLabels() != null) {
+            task.getLabels().clear();
+        }
     }
 
     private void validateTaskEditPermission(Task task, UUID currentUserId) {
         User currentUser = userService.getUserEntityById(currentUserId);
 
         boolean isCreator = task.getCreatedBy().getId().equals(currentUserId);
-        boolean isTeamLead = task.getTeam().getLead().getId().equals(currentUserId);
-        boolean isModerator = currentUser.getRole() == UserRole.MODERATOR || currentUser.getRole() == UserRole.ADMIN;
+        boolean isAdmin = currentUser.getRole() == UserRole.ADMIN;
 
-        if (!isCreator && !isTeamLead && !isModerator) {
+        if (!isCreator && !isAdmin) {
             throw new UnauthorizedException("You don't have permission to edit this task");
         }
     }

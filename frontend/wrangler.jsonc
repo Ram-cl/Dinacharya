@@ -1,0 +1,20 @@
+{
+  "name": "dinacharya",
+  "main": "./cloudflare-worker.js",
+  "compatibility_date": "2026-08-28",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "vars": {
+    "API_ORIGIN": "https://dinacharya-backend.onrender.com"
+  },
+  "triggers": {
+    "crons": ["*/10 * * * *"]
+  }
+}

@@ -1,7 +1,21 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/store/authStore';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+const DEFAULT_RENDER_API_URL = 'https://dinacharya-backend.onrender.com/api/v1';
+
+// Prefer a configured backend URL; otherwise use the Render service as the safe production default.
+export const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? 'http://localhost:8080/api/v1'
+    : DEFAULT_RENDER_API_URL)
+).replace(/\/$/, '');
+
+/** Browser → Render, skipping Cloudflare's 120s proxy read timeout on long imports. */
+export const IMPORT_API_URL = (
+  import.meta.env.VITE_DIRECT_API_URL ||
+  (API_URL.startsWith('http') ? API_URL : DEFAULT_RENDER_API_URL)
+).replace(/\/$/, '');
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -17,6 +31,9 @@ apiClient.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    if (config.data instanceof FormData && config.headers) {
+      delete config.headers['Content-Type'];
+    }
     return config;
   },
   (error) => Promise.reject(error)
@@ -28,7 +45,14 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const requestUrl = originalRequest?.url || '';
+    const isAuthCall =
+      requestUrl.includes('/auth/login') ||
+      requestUrl.includes('/auth/register') ||
+      requestUrl.includes('/auth/refresh') ||
+      requestUrl.includes('/auth/forgot-password');
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthCall) {
       originalRequest._retry = true;
 
       try {

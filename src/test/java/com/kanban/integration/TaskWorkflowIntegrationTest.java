@@ -49,7 +49,7 @@ class TaskWorkflowIntegrationTest {
             .email("creator@example.com")
             .password("password")
             .name("Creator")
-            .role(UserRole.TEAM_LEAD)
+            .role(UserRole.ADMIN)  // Use ADMIN for test task creator
             .isActive(true)
             .build();
         creator = userRepository.save(creator);
@@ -58,7 +58,7 @@ class TaskWorkflowIntegrationTest {
             .email("assignee@example.com")
             .password("password")
             .name("Assignee")
-            .role(UserRole.MEMBER)
+            .role(UserRole.USER)
             .isActive(true)
             .build();
         assignee = userRepository.save(assignee);
