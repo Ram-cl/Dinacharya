@@ -80,7 +80,7 @@ app:
     from: ${MAIL_FROM:${MAIL_USERNAME:noreply@dinacharya.local}}
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:${FRONTEND_URL:http://localhost:5173}}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:4173,http://localhost:3000,https://dinacharya-backend.onrender.com,https://*.workers.dev,https://*.pages.dev,${FRONTEND_URL:http://localhost:5173}}
   admin:
     email: ${ADMIN_EMAIL:admin@taskhub.com}
     password: ${ADMIN_PASSWORD:}

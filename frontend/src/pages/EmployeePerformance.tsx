@@ -25,7 +25,9 @@ function toLocalIsoDate(date: Date) {
 
 function currentMonthRange() {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Use last 60 days so imported historical data is always in range
+  const start = new Date(now);
+  start.setDate(start.getDate() - 60);
   return { from: toLocalIsoDate(start), to: toLocalIsoDate(now) };
 }
 

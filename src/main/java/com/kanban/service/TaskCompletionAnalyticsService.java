@@ -38,11 +38,8 @@ public class TaskCompletionAnalyticsService {
             ? taskRepository.findByAssignedTo_Department(department)
             : taskRepository.findAll();
 
-        // Filter tasks relevant to the period (created before period end)
-        LocalDateTime periodEndTime = periodEnd.plusDays(1).atStartOfDay();
-        List<Task> periodTasks = allTasks.stream()
-            .filter(t -> t.getCreatedAt().isBefore(periodEndTime))
-            .toList();
+        // Use all tasks for summary metrics (no creation-date window)
+        List<Task> periodTasks = allTasks;
 
         // Calculate summary metrics
         int totalTasks = periodTasks.size();

@@ -8,7 +8,7 @@ import { AxiosError } from 'axios';
 function getApiErrorMessage(error: unknown, fallback: string) {
   if (error instanceof AxiosError) {
     if (!error.response) {
-      return 'Cannot reach the API. On Cloudflare, set Worker variable API_ORIGIN to your Render URL (https://YOUR-SERVICE.onrender.com).';
+      return 'Cannot reach the API. Set VITE_API_URL or the Cloudflare Worker variable API_ORIGIN to your Render backend URL (https://dinacharya-backend.onrender.com).';
     }
     const status = error.response.status;
     if (status === 503) {

@@ -128,8 +128,10 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
         SELECT t FROM Task t
         WHERE t.assignedTo.id = :userId
         AND t.status = 'DONE'
-        AND t.completedAt >= :start
-        AND t.completedAt < :endExclusive
+        AND (
+            (t.completedAt IS NOT NULL AND t.completedAt >= :start AND t.completedAt < :endExclusive)
+            OR (t.completedAt IS NULL AND t.updatedAt >= :start AND t.updatedAt < :endExclusive)
+        )
         """)
     List<Task> findCompletedTasksForUserInPeriod(
         @Param("userId") UUID userId,
@@ -142,7 +144,8 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
         WHERE t.assignedTo.id = :userId
         AND (
             (t.status <> 'DONE' AND t.createdAt < :endExclusive)
-            OR (t.status = 'DONE' AND t.completedAt >= :start AND t.completedAt < :endExclusive)
+            OR (t.status = 'DONE' AND t.completedAt IS NOT NULL AND t.completedAt >= :start AND t.completedAt < :endExclusive)
+            OR (t.status = 'DONE' AND t.completedAt IS NULL AND t.updatedAt >= :start AND t.updatedAt < :endExclusive)
         )
         """)
     List<Task> findAssignedTasksForCompletionInPeriod(

@@ -7,6 +7,8 @@ public final class DepartmentNames {
     private static final Map<String, String> CANONICAL = Map.ofEntries(
             Map.entry("ase", "ASE"),
             Map.entry("business development", "Business Development"),
+            Map.entry("bde", "Business Development"),
+            Map.entry("bd", "Business Development"),
             Map.entry("cybersecurity", "Cybersecurity"),
             Map.entry("devops", "DevOps"),
             Map.entry("dev", "Dev"),

@@ -100,8 +100,9 @@ public class FileImportController {
     @Operation(summary = "Import a daily attendance/tasksheet workbook")
     public ResponseEntity<TaskImportResponse> importFromAttendanceSheet(
             @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "importDate", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate importDate,
             org.springframework.security.core.Authentication authentication) {
-        return importFromAttendanceSheetForTeam(file, null, authentication);
+        return importFromAttendanceSheetForTeam(file, null, importDate, authentication);
     }
 
     @PostMapping("/tasks/attendance/{teamId}")
@@ -110,7 +111,8 @@ public class FileImportController {
             summary = "Import tasks from a daily attendance/tasksheet workbook",
             description = "Upload a multi-sheet Excel (.xlsx) attendance tasksheet. Each sheet is scanned for a header " +
                     "row and columns are mapped by name (Date, Attendance, Login, Logout, Hours, Task/Description, Status). " +
-                    "The employee is resolved from a Name column, a 'Name:' label, or the sheet tab name.",
+                    "The employee is resolved from a Name column, a 'Name:' label, or the sheet tab name. " +
+                    "Pass importDate (YYYY-MM-DD) to import only rows matching that date.",
             responses = {
                     @ApiResponse(
                             responseCode = "200",
@@ -126,9 +128,10 @@ public class FileImportController {
             @Parameter(description = "Attendance tasksheet Excel file", required = true)
             @RequestParam("file") MultipartFile file,
             @PathVariable(required = false) UUID teamId,
+            @RequestParam(value = "importDate", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate importDate,
             org.springframework.security.core.Authentication authentication) {
 
-        log.info("Received attendance import request for team: {}, file: {}", teamId, file.getOriginalFilename());
+        log.info("Received attendance import request for team: {}, file: {}, importDate: {}", teamId, file.getOriginalFilename(), importDate);
 
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body(
@@ -151,7 +154,7 @@ public class FileImportController {
 
         try {
             var user = userDetailsService.loadUserEntityByEmail(authentication.getName());
-            TaskImportResponse response = fileImportService.importAttendanceSheet(file, teamId, user.getId());
+            TaskImportResponse response = fileImportService.importAttendanceSheet(file, teamId, user.getId(), importDate);
             return ResponseEntity.ok(response);
         } catch (IOException e) {
             log.error("Error processing attendance file: {}", e.getMessage(), e);

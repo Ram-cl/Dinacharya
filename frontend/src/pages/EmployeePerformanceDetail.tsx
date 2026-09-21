@@ -15,7 +15,8 @@ function toLocalIsoDate(date: Date) {
 
 function currentMonthRange() {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const start = new Date(now);
+  start.setDate(start.getDate() - 60);
   return { from: toLocalIsoDate(start), to: toLocalIsoDate(now) };
 }
 

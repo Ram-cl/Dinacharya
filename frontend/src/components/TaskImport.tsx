@@ -29,6 +29,13 @@ const TaskImport: React.FC<TaskImportProps> = ({ teamId, onImportSuccess }) => {
   const [dragActive, setDragActive] = useState(false);
   const [attendanceMode, setAttendanceMode] = useState(false);
 
+  // Default import date to today
+  const todayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [importDate, setImportDate] = useState(todayStr());
+
   const handleFileUpload = async (file: File | null) => {
     if (!file) return;
 
@@ -64,7 +71,7 @@ const TaskImport: React.FC<TaskImportProps> = ({ teamId, onImportSuccess }) => {
       }
 
       const response = await apiClient.post<TaskImportResponse>(
-        `/import/tasks/${endpoint}/${resolvedTeamId}`,
+        `/import/tasks/${endpoint}/${resolvedTeamId}${attendanceMode && importDate ? `?importDate=${importDate}` : ''}`,
         formData,
         { baseURL: IMPORT_API_URL, timeout: 300000 }
       );
@@ -183,22 +190,61 @@ const TaskImport: React.FC<TaskImportProps> = ({ teamId, onImportSuccess }) => {
           </button>
 
           {/* Attendance format toggle */}
-          <label className="flex items-center gap-2 text-sm text-charcoal cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-sm text-charcoal cursor-pointer select-none px-3 py-2 rounded-lg border border-warm-border bg-white hover:bg-sand/40 transition-colors">
             <input
               type="checkbox"
               checked={attendanceMode}
               onChange={(e) => setAttendanceMode(e.target.checked)}
               disabled={importing}
+              className="accent-terracotta w-4 h-4"
             />
-            Attendance tasksheet format
+            <span className="material-symbols-outlined text-[16px] text-terracotta">event_note</span>
+            Attendance tasksheet
           </label>
 
+          {/* Date filter — only shown in attendance mode */}
+          {attendanceMode && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-terracotta/30 bg-terracotta/5">
+              <span className="material-symbols-outlined text-[16px] text-terracotta">calendar_today</span>
+              <label htmlFor="import-date" className="text-sm font-medium text-charcoal whitespace-nowrap">
+                Import date
+              </label>
+              <input
+                id="import-date"
+                type="date"
+                value={importDate}
+                onChange={(e) => setImportDate(e.target.value)}
+                disabled={importing}
+                className="border border-warm-border rounded-lg px-2 py-1 text-sm text-charcoal bg-white focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+              />
+              {importDate ? (
+                <button
+                  type="button"
+                  onClick={() => setImportDate('')}
+                  className="text-xs text-charcoal-muted hover:text-terracotta underline whitespace-nowrap transition-colors"
+                  title="Remove date filter — import all rows"
+                >
+                  All dates
+                </button>
+              ) : (
+                <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">warning</span>
+                  Imports all rows
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Info */}
-          <div className="text-sm text-charcoal-muted">
-            {attendanceMode
-              ? 'Reads Date, Attendance, Login, Logout, Hours, Task, Status across all sheets'
-              : 'Supported: .xlsx, .docx'}
-          </div>
+          {attendanceMode && importDate && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#22c55e]/10 text-[#16a34a] text-xs font-medium">
+              <span className="material-symbols-outlined text-[14px]">check_circle</span>
+              Importing {importDate} only
+            </div>
+          )}
+          {!attendanceMode && (
+            <span className="text-sm text-charcoal-muted">Supported: .xlsx, .docx</span>
+          )}
         </div>
 
         {/* Drag & Drop Zone */}

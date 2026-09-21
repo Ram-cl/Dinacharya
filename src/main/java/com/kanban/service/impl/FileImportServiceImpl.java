@@ -67,7 +67,7 @@ public class FileImportServiceImpl implements FileImportService {
         byte[] bytes = file.getBytes();
 
         // Auto-detect the multi-sheet attendance/timesheet layout first.
-        List<TaskImportData> attendanceTasks = parseAttendanceExcel(bytes);
+        List<TaskImportData> attendanceTasks = parseAttendanceExcel(bytes, null);
         if (!attendanceTasks.isEmpty()) {
             log.info("Detected attendance tasksheet layout ({} task rows) — importing with employee auto-create",
                     attendanceTasks.size());
@@ -89,9 +89,14 @@ public class FileImportServiceImpl implements FileImportService {
 
     @Override
     public TaskImportResponse importAttendanceSheet(MultipartFile file, UUID teamId, UUID userId) throws IOException {
-        log.info("Starting attendance tasksheet import for team: {}", teamId);
+        return importAttendanceSheet(file, teamId, userId, null);
+    }
 
-        List<TaskImportData> parsedTasks = parseAttendanceExcel(file);
+    @Override
+    public TaskImportResponse importAttendanceSheet(MultipartFile file, UUID teamId, UUID userId, java.time.LocalDate importDate) throws IOException {
+        log.info("Starting attendance tasksheet import for team: {}, importDate: {}", teamId, importDate);
+
+        List<TaskImportData> parsedTasks = parseAttendanceExcel(file.getBytes(), importDate);
         return processImportedTasks(parsedTasks, teamId, userId, true);
     }
 
@@ -355,10 +360,10 @@ public class FileImportServiceImpl implements FileImportService {
 
     @Override
     public List<TaskImportData> parseAttendanceExcel(MultipartFile file) throws IOException {
-        return parseAttendanceExcel(file.getBytes());
+        return parseAttendanceExcel(file.getBytes(), null);
     }
 
-    private List<TaskImportData> parseAttendanceExcel(byte[] bytes) throws IOException {
+    private List<TaskImportData> parseAttendanceExcel(byte[] bytes, java.time.LocalDate importDate) throws IOException {
         List<TaskImportData> tasks = new ArrayList<>();
 
         try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
@@ -377,18 +382,22 @@ public class FileImportServiceImpl implements FileImportService {
                     continue;
                 }
                 try {
-                    parseAttendanceSheet(sheet, formatter, tasks);
+                    parseAttendanceSheet(sheet, formatter, tasks, importDate);
                 } catch (Exception e) {
                     log.warn("Skipping sheet '{}' due to parse error: {}", sheet.getSheetName(), e.getMessage());
                 }
             }
         }
 
-        log.info("Parsed {} task rows from attendance workbook", tasks.size());
+        log.info("Parsed {} task rows from attendance workbook (filter date: {})", tasks.size(), importDate);
         return tasks;
     }
 
     private void parseAttendanceSheet(Sheet sheet, DataFormatter formatter, List<TaskImportData> tasks) {
+        parseAttendanceSheet(sheet, formatter, tasks, null);
+    }
+
+    private void parseAttendanceSheet(Sheet sheet, DataFormatter formatter, List<TaskImportData> tasks, java.time.LocalDate importDate) {
         int headerRowIdx = findHeaderRow(sheet, formatter);
         if (headerRowIdx < 0) {
             log.info("No recognizable header row in sheet '{}' — skipping", sheet.getSheetName());
@@ -413,6 +422,12 @@ public class FileImportServiceImpl implements FileImportService {
         // Check if this is a mixed sheet (has TASK column) or attendance-only
         boolean hasTitleColumn = cols.containsKey("TASK");
 
+        LocalDate lastSeenDate = null;
+        String lastSeenAttendance = null;
+        String lastSeenLogin = null;
+        String lastSeenLogout = null;
+        String lastSeenHours = null;
+
         for (int r = headerRowIdx + 1; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
             if (row == null || isRowEmpty(row)) {
@@ -423,9 +438,6 @@ public class FileImportServiceImpl implements FileImportService {
             if (cols.containsKey("DATE")) {
                 date = getCellValueAsDate(row.getCell(cols.get("DATE")));
             }
-            if (date == null) {
-                continue;
-            }
 
             String attendance = cellText(row, cols.get("ATTENDANCE"), formatter);
             if (attendance == null || attendance.isBlank()) {
@@ -434,6 +446,33 @@ public class FileImportServiceImpl implements FileImportService {
             String login = cellText(row, cols.get("LOGIN"), formatter);
             String logout = cellText(row, cols.get("LOGOUT"), formatter);
             String hours = cellText(row, cols.get("HOURS"), formatter);
+
+            // If no date on this row, check if it has a task — carry forward last seen date
+            if (date == null) {
+                String carryTask = hasTitleColumn ? cellText(row, cols.get("TASK"), formatter) : null;
+                if (carryTask != null && !carryTask.isBlank() && lastSeenDate != null) {
+                    // Sub-task row (e.g. "2. task B") — use last seen date and attendance
+                    date = lastSeenDate;
+                    if (attendance == null || attendance.isBlank()) attendance = lastSeenAttendance;
+                    if (login == null || login.isBlank()) login = lastSeenLogin;
+                    if (logout == null || logout.isBlank()) logout = lastSeenLogout;
+                    if (hours == null || hours.isBlank()) hours = lastSeenHours;
+                } else {
+                    continue;
+                }
+            } else {
+                // New date row — update last seen values
+                lastSeenDate = date;
+                lastSeenAttendance = attendance;
+                lastSeenLogin = login;
+                lastSeenLogout = logout;
+                lastSeenHours = hours;
+            }
+
+            // Apply date filter — skip rows that don't match the requested import date
+            if (importDate != null && !importDate.equals(date)) {
+                continue;
+            }
 
             String rowEmployee = cellText(row, cols.get("NAME"), formatter);
             String employeeName = (rowEmployee != null && !rowEmployee.isBlank()) ? rowEmployee : sheetName;
@@ -452,8 +491,12 @@ public class FileImportServiceImpl implements FileImportService {
             }
 
             String taskTitle = null;
+            String taskStatus = null;
             if (hasTitleColumn) {
                 taskTitle = cellText(row, cols.get("TASK"), formatter);
+            }
+            if (cols.containsKey("STATUS")) {
+                taskStatus = cellText(row, cols.get("STATUS"), formatter);
             }
 
             String title = (taskTitle != null && !taskTitle.isBlank())
@@ -462,6 +505,7 @@ public class FileImportServiceImpl implements FileImportService {
 
             TaskImportData data = TaskImportData.builder()
                     .title(title)
+                    .status(taskStatus != null ? parseStatus(taskStatus) : null)
                     .dueDate(date)
                     .employeeName(employeeName)
                     .department(department)
@@ -627,15 +671,27 @@ public class FileImportServiceImpl implements FileImportService {
             return null;
         }
         if (h.contains("action")) return null; // ignore ACTIONS column
-        if (h.contains("scorecard") || h.contains("completion") || h.contains("completed")) return null; // ignore Performance Scorecard block
+        // Ignore scorecard/performance metric columns that contain "completion" but refer to % rates
+        if (h.contains("scorecard") || h.contains("performance") || h.contains("graph")
+                || h.equals("completion %") || h.equals("completion%")
+                || (h.contains("completion") && (h.contains("rate") || h.contains("score") || h.contains("%")))) {
+            return null;
+        }
         if (h.contains("employee") || h.contains("associate") || h.equals("name") || h.contains("emp name") || h.contains("staff")) return "NAME";
         if (h.contains("depart") || h.equals("dept")) return "DEPARTMENT";
+        // Match status columns — must check before the TASK rule since "Task Completion" should map to STATUS
+        if (h.equals("status") || h.equals("task status") || h.equals("completed") || h.equals("completion")
+                || h.equals("task completion") || h.equals("completion status")
+                || (h.contains("completion") && h.contains("status"))
+                || (h.contains("status") && !h.contains("attend") && !h.contains("employ") && !h.contains("employee"))) return "STATUS";
         // "Task Description" must be the task title, so check "task" before "description"
         if (h.contains("task") || h.contains("activity") || h.contains("assignment") || h.contains("work done")) return "TASK";
         if (h.contains("description") || h.contains("details")) return "DESCRIPTION";
         if (h.contains("date")) return "DATE";
+        // A standalone number (e.g. "7") used as a serial/row number header — treat as DATE
+        // This handles sheets like Pasupula's where the date column header is just a number
+        if (h.matches("\\d{1,2}")) return "DATE";
         if (h.contains("priorit")) return "PRIORITY";
-        if (h.contains("status")) return "STATUS";
         if (h.contains("attend") || h.equals("present") || h.contains("presence")) return "ATTENDANCE";
         if (h.contains("remark") || h.contains("note") || h.contains("comment")) return "REMARK";
         if (h.contains("login") || h.contains("in time") || h.contains("check in") || h.contains("check-in")) return "LOGIN";
@@ -712,7 +768,9 @@ public class FileImportServiceImpl implements FileImportService {
             Map.entry("ui",                   "UI"),
             Map.entry("uiux",                 "UI"),
             Map.entry("ui/ux",                "UI"),
-            Map.entry("ui ux",                "UI")
+            Map.entry("ui ux",                "UI"),
+            Map.entry("bde",                  "Business Development"),
+            Map.entry("bd",                   "Business Development")
         );
         String cleaned = name;
         String detectedDepartment = null;
@@ -770,8 +828,17 @@ public class FileImportServiceImpl implements FileImportService {
         }
 
         try {
-            if (cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
-                return cell.getLocalDateTimeCellValue().toLocalDate();
+            if (cell.getCellType() == CellType.NUMERIC) {
+                if (DateUtil.isCellDateFormatted(cell)) {
+                    return cell.getLocalDateTimeCellValue().toLocalDate();
+                }
+                // Fallback: treat unformatted numeric values in the plausible Excel date serial
+                // range (40000–60000 = roughly 2009–2064) as dates. This handles sheets like
+                // Praneeth's where date cells have no format metadata but store valid serials.
+                double serial = cell.getNumericCellValue();
+                if (serial > 40000 && serial < 60000) {
+                    return DateUtil.getLocalDateTime(serial, false).toLocalDate();
+                }
             } else if (cell.getCellType() == CellType.STRING) {
                 return parseDate(cell.getStringCellValue());
             }
@@ -794,7 +861,15 @@ public class FileImportServiceImpl implements FileImportService {
                 "dd/MM/yyyy",
                 "MM/dd/yyyy",
                 "dd-MM-yyyy",
-                "MM-dd-yyyy"
+                "MM-dd-yyyy",
+                "dd.MM.yyyy",
+                "d.MM.yyyy",
+                "dd.M.yyyy",
+                "d.M.yyyy",
+                "dd.MM.yy",
+                "d.MM.yy",
+                "d/M/yyyy",
+                "dd/M/yyyy",
             };
 
             for (String format : formats) {
@@ -828,6 +903,8 @@ public class FileImportServiceImpl implements FileImportService {
                 return TaskStatus.IN_REVIEW;
             } else if (normalized.contains("done") || normalized.contains("complete")) {
                 return TaskStatus.DONE;
+            } else if (normalized.contains("hold") || normalized.contains("blocked") || normalized.contains("pause")) {
+                return TaskStatus.IN_REVIEW; // closest status — ON_HOLD maps to IN_REVIEW
             }
             return TaskStatus.TODO;
         }

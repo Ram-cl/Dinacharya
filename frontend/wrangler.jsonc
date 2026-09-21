@@ -12,7 +12,7 @@
     "run_worker_first": true
   },
   "vars": {
-    "API_ORIGIN": "https://dinacharya-ese5.onrender.com"
+    "API_ORIGIN": "https://dinacharya-backend.onrender.com"
   },
   "triggers": {
     "crons": ["*/10 * * * *"]

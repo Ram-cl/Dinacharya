@@ -139,7 +139,7 @@ export default function TaskManagement() {
   const [form, setForm] = useState<TaskFormState>({ ...EMPTY_FORM, deadline: getTodayDate() });
   const [filterEmployee, setFilterEmployee] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
-  const [filterDate, setFilterDate] = useState(getTodayDate());  // Default to today
+  const [filterDate, setFilterDate] = useState('');  // No default date filter — show all tasks
   const [filterStatus, setFilterStatus] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -149,7 +149,7 @@ export default function TaskManagement() {
   const [descriptionText, setDescriptionText] = useState('');
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
 
-  const { data: tasksPage, isLoading } = useTasks({ size: 200 });
+  const { data: tasksPage, isLoading } = useTasks({ size: 1000 });
   const { data: usersPage } = useUsers();
   const { data: departmentsList = [] } = useDepartments();
   const { data: teamsPage } = useTeams(0, 50);
@@ -209,13 +209,6 @@ export default function TaskManagement() {
     return () => window.clearTimeout(timer);
   }, [location.state]);
 
-  const stats = useMemo(() => ({
-    pending: tasks.filter((t) => t.status === TaskStatus.TODO).length,
-    inProgress: tasks.filter((t) => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.IN_REVIEW).length,
-    completed: tasks.filter((t) => t.status === TaskStatus.DONE).length,
-    overdue: tasks.filter(isOverdue).length,
-  }), [tasks]);
-
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
       if (filterEmployee && task.assignedTo?.id !== filterEmployee) return false;
@@ -225,6 +218,13 @@ export default function TaskManagement() {
       return true;
     });
   }, [tasks, filterEmployee, filterDepartment, filterDate, filterStatus]);
+
+  const stats = useMemo(() => ({
+    pending: filteredTasks.filter((t) => t.status === TaskStatus.TODO).length,
+    inProgress: filteredTasks.filter((t) => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.IN_REVIEW).length,
+    completed: filteredTasks.filter((t) => t.status === TaskStatus.DONE).length,
+    overdue: filteredTasks.filter(isOverdue).length,
+  }), [filteredTasks]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -359,11 +359,11 @@ export default function TaskManagement() {
               {isModerator && (
                 <button
                   type="button"
-                  className="btn btn-danger text-sm"
+                  className="btn btn-danger text-sm flex items-center gap-1.5"
                   onClick={() => setShowDeleteAllModal(true)}
                   title="Delete all tasks in the system (Admin only)"
                 >
-                  <span className="material-symbols-outlined text-[14px]">delete_sweep</span>
+                  <span className="material-symbols-outlined text-[14px] leading-none">delete_sweep</span>
                   Delete All Tasks
                 </button>
               )}
