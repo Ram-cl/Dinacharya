@@ -3,14 +3,15 @@ spring:
     name: kanban-backend
   
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:kanbandb}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:kanbandb}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&autoReconnect=true
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:12345678}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 10
       minimum-idle: 5
-      connection-timeout: 20000
+      connection-timeout: 30000
+      initialization-fail-timeout: 60000
       idle-timeout: 300000
       max-lifetime: 1200000
 
@@ -111,6 +112,8 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
   metrics:
     distribution:
       percentiles-histogram:
