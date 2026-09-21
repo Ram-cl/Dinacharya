@@ -38,18 +38,32 @@ public class MysqlTlsUrlEnforcer {
     }
 
     static String ensureTls(String url) {
-        String cleaned = url
-                .replace("useSSL=false", "useSSL=true")
-                .replace("requireSSL=false", "requireSSL=true")
-                .replace("sslMode=DISABLED", "sslMode=VERIFY_IDENTITY")
-                .replace("sslMode=PREFERRED", "sslMode=VERIFY_IDENTITY");
-        if (!cleaned.toLowerCase().contains("sslmode=")) {
-            cleaned += (cleaned.contains("?") ? "&" : "?") + TLS_PARAMS;
+        if (url == null) {
+            return url;
         }
-        if (!cleaned.contains("enabledTLSProtocols=")) {
-            cleaned += (cleaned.contains("?") ? "&" : "?") + "enabledTLSProtocols=TLSv1.2,TLSv1.3";
+
+        // Only enforce strict VERIFY_IDENTITY TLS for TiDB Cloud hosts which require it
+        if (url.contains("tidbcloud.com")) {
+            String cleaned = url
+                    .replace("useSSL=false", "useSSL=true")
+                    .replace("requireSSL=false", "requireSSL=true")
+                    .replace("sslMode=DISABLED", "sslMode=VERIFY_IDENTITY")
+                    .replace("sslMode=PREFERRED", "sslMode=VERIFY_IDENTITY");
+            if (!cleaned.toLowerCase().contains("sslmode=")) {
+                cleaned += (cleaned.contains("?") ? "&" : "?") + TLS_PARAMS;
+            }
+            if (!cleaned.contains("enabledTLSProtocols=")) {
+                cleaned += (cleaned.contains("?") ? "&" : "?") + "enabledTLSProtocols=TLSv1.2,TLSv1.3";
+            }
+            return cleaned;
         }
-        return cleaned;
+
+        // For standard MySQL (Docker / Local / AWS RDS / Render), if useSSL=false is specified, do not force SSL
+        if (url.contains("useSSL=false") || url.contains("sslMode=DISABLED")) {
+            return url;
+        }
+
+        return url;
     }
 
     static String ensureAppDatabase(String url) {
